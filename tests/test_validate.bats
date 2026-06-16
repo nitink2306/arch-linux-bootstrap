@@ -148,3 +148,8 @@ setup() {
     run validate::password "a"
     [ "$status" -eq 1 ]
 }
+
+@test "validate::password rejects password containing colon" {
+    run validate::password "pass:word1"
+    [ "$status" -eq 1 ]
+}
