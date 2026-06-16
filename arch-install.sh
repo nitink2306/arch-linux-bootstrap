@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+trap 'echo "[ERROR] Script failed at line $LINENO. Check $LOG_TMP for details." >&2' ERR
 
 # ============================================================
 # Arch Linux Install Script
@@ -428,6 +429,8 @@ fi
 log "Wiping $DISK..."
 wipefs -af "$DISK"
 sgdisk -Z "$DISK"
+partprobe "$DISK"
+sleep 2
 
 if [ "$BOOT_MODE" = "uefi" ]; then
     log "Creating GPT partition table (UEFI)..."
@@ -547,12 +550,6 @@ TIMEZONE=$TIMEZONE
 LOCALE=$LOCALE
 PRESET
     log "Preset saved to $SCRIPT_DIR/presets/default.conf"
-
-    # The live ISO runs in RAM and is gone after reboot.
-    # Copy the preset to the installed system so it survives.
-    mkdir -p "/mnt/home/$USERNAME"
-    cp "$SCRIPT_DIR/presets/default.conf" "/mnt/home/$USERNAME/arch-bootstrap-preset.conf"
-    log "Preset also copied to /home/$USERNAME/arch-bootstrap-preset.conf on installed system."
     echo ""
 fi
 
@@ -603,7 +600,11 @@ ZRAM
 usermod -aG wheel,audio,video,optical,storage,input $USERNAME
 
 # bootloader
-pacman -S --noconfirm grub efibootmgr networkmanager sddm
+if [ "$BOOT_MODE" = "uefi" ]; then
+    pacman -S --noconfirm grub efibootmgr networkmanager sddm
+else
+    pacman -S --noconfirm grub networkmanager sddm
+fi
 
 if [ "$BOOT_MODE" = "uefi" ]; then
     grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
@@ -614,6 +615,7 @@ fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
 # enable services
+mkdir -p /etc/systemd/system/multi-user.target.wants
 systemctl enable NetworkManager
 systemctl enable sddm
 ln -sf /usr/lib/systemd/system/NetworkManager.service /etc/systemd/system/multi-user.target.wants/NetworkManager.service
@@ -628,6 +630,17 @@ log "Chroot configuration complete."
 echo ""
 
 # ------------------------------------------------------------
+# COPY PRESET TO INSTALLED SYSTEM
+# Done after chroot so useradd has already created the home
+# directory with correct ownership
+# ------------------------------------------------------------
+if [ -f "$SCRIPT_DIR/presets/default.conf" ]; then
+    cp "$SCRIPT_DIR/presets/default.conf" "/mnt/home/$USERNAME/arch-bootstrap-preset.conf"
+    arch-chroot /mnt chown "$USERNAME:$USERNAME" "/home/$USERNAME/arch-bootstrap-preset.conf"
+    log "Preset copied to /home/$USERNAME/arch-bootstrap-preset.conf on installed system."
+fi
+
+# ------------------------------------------------------------
 # COPY FINAL LOG INTO INSTALLED SYSTEM
 # ------------------------------------------------------------
 cp "$LOG_TMP" "$LOG_FINAL"
@@ -635,12 +648,15 @@ log "Final log saved to $LOG_FINAL"
 
 # ------------------------------------------------------------
 # UNMOUNT + REBOOT
+# Close the log file handle first — tee keeps /mnt/var/log open
+# which causes umount to fail with "target is busy"
 # ------------------------------------------------------------
 echo "============================================================"
 echo " Installation Complete"
 echo "============================================================"
 echo ""
 log "Unmounting filesystems..."
+exec > /dev/tty 2>&1
 umount -R /mnt
 echo ""
 echo "Done. Remove installation media and reboot."
