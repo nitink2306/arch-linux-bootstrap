@@ -218,7 +218,7 @@ if [ -z "${TIMEZONE:-}" ]; then
     echo "Select timezone region:"
     echo ""
 
-    REGIONS=($(ls /usr/share/zoneinfo/ | grep -v '\.' | grep -v 'posix' | grep -v 'right' | sort))
+    mapfile -t REGIONS < <(find /usr/share/zoneinfo/ -mindepth 1 -maxdepth 1 -type d ! -name 'posix' ! -name 'right' ! -name '*.*' -printf '%f\n' | sort)
     TOTAL=${#REGIONS[@]}
     START=0
 
@@ -259,7 +259,7 @@ if [ -z "${TIMEZONE:-}" ]; then
     echo "Select timezone city:"
     echo ""
 
-    CITIES=($(ls /usr/share/zoneinfo/"$REGION"/ | sort))
+    mapfile -t CITIES < <(find /usr/share/zoneinfo/"$REGION"/ -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
     TOTAL=${#CITIES[@]}
     START=0
 
