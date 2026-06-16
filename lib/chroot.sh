@@ -3,7 +3,7 @@
 
 # lib/chroot.sh — System configuration inside chroot
 # Writes a standalone script to /mnt/tmp/ to avoid heredoc expansion bugs.
-# Passwords handled via a separate 700-mode file, deleted after use.
+# Passwords handled via a separate 600-mode file, deleted after use.
 # Uses ln -sf for service enabling (systemctl enable is a no-op in chroot).
 
 chroot::configure() {
@@ -26,35 +26,32 @@ chroot::configure() {
     printf '%s:%s\n' "root" "$root_password" > "$pass_file"
     printf '%s:%s\n' "$username" "$user_password" >> "$pass_file"
 
-    # Compute escaped locale for sed on the host side
-    local escaped_locale
-    escaped_locale=$(printf '%s' "$locale" | sed 's/\./\\./g')
-
-    # Write the chroot setup script — host variables are interpolated at write time
-    cat > /mnt/tmp/arch-chroot-setup.sh << SETUP_SCRIPT
+    # Write the chroot setup script — values are passed via env, not interpolated
+    cat > /mnt/tmp/arch-chroot-setup.sh << 'SETUP_SCRIPT'
 #!/bin/bash
-# Inherits set -euo pipefail from sourcing script
+set -euo pipefail
 
 # timezone
-ln -sf /usr/share/zoneinfo/${timezone} /etc/localtime
+ln -sf "/usr/share/zoneinfo/${CHROOT_TIMEZONE}" /etc/localtime
 hwclock --systohc
 
 # locale
-sed -i "s/^#${escaped_locale} UTF-8\$/${locale} UTF-8/" /etc/locale.gen
+escaped_locale=$(printf '%s' "$CHROOT_LOCALE" | sed 's/\./\\./g')
+sed -i "s/^#${escaped_locale} UTF-8\$/${CHROOT_LOCALE} UTF-8/" /etc/locale.gen
 locale-gen
-echo "LANG=${locale}" > /etc/locale.conf
+echo "LANG=${CHROOT_LOCALE}" > /etc/locale.conf
 
 # hostname
-echo "${hostname}" > /etc/hostname
+echo "${CHROOT_HOSTNAME}" > /etc/hostname
 cat > /etc/hosts << HOSTS
 127.0.0.1   localhost
 ::1         localhost
-127.0.1.1   ${hostname}.localdomain ${hostname}
+127.0.1.1   ${CHROOT_HOSTNAME}.localdomain ${CHROOT_HOSTNAME}
 HOSTS
 
 # passwords — read from restricted file, then delete
 # Create user first so chpasswd can set both passwords
-useradd -mG wheel ${username}
+useradd -mG wheel "${CHROOT_USERNAME}"
 chpasswd < /tmp/arch-chroot-passwords
 rm -f /tmp/arch-chroot-passwords
 
@@ -70,19 +67,19 @@ compression-algorithm = zstd
 ZRAM
 
 # user groups
-usermod -aG wheel,audio,video,optical,storage,input ${username}
+usermod -aG wheel,audio,video,optical,storage,input "${CHROOT_USERNAME}"
 
 # bootloader
-if [ "${boot_mode}" = "uefi" ]; then
+if [ "${CHROOT_BOOT_MODE}" = "uefi" ]; then
     pacman -S --noconfirm grub efibootmgr networkmanager sddm
 else
     pacman -S --noconfirm grub networkmanager sddm
 fi
 
-if [ "${boot_mode}" = "uefi" ]; then
+if [ "${CHROOT_BOOT_MODE}" = "uefi" ]; then
     grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 else
-    grub-install --target=i386-pc "${disk}"
+    grub-install --target=i386-pc "${CHROOT_DISK}"
 fi
 
 grub-mkconfig -o /boot/grub/grub.cfg
@@ -99,8 +96,15 @@ SETUP_SCRIPT
 
     chmod +x /mnt/tmp/arch-chroot-setup.sh
 
-    # Execute inside chroot
-    arch-chroot /mnt /tmp/arch-chroot-setup.sh
+    # Execute inside chroot, passing values as environment variables (never as shell source)
+    arch-chroot /mnt /usr/bin/env \
+        CHROOT_TIMEZONE="$timezone" \
+        CHROOT_LOCALE="$locale" \
+        CHROOT_HOSTNAME="$hostname" \
+        CHROOT_USERNAME="$username" \
+        CHROOT_BOOT_MODE="$boot_mode" \
+        CHROOT_DISK="$disk" \
+        /tmp/arch-chroot-setup.sh
 
     # Cleanup
     rm -f /mnt/tmp/arch-chroot-setup.sh

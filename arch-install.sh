@@ -19,7 +19,7 @@ parse_args() {
                 PRESET_FILE="$2"; shift 2 ;;
             --dry-run) DRY_RUN=true; shift ;;
             --help) echo "Usage: arch-install.sh [--preset FILE] [--dry-run] [--help]"; exit 0 ;;
-            *) shift ;;
+            *) echo "Error: Unknown option: $1" >&2; exit 1 ;;
         esac
     done
 }

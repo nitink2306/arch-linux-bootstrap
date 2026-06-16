@@ -68,8 +68,13 @@ ui::prompt_reboot() {
 
 ui::_select_disk() {
     if [[ -n "${DISK:-}" ]]; then
-        log::info "Disk loaded from preset: $DISK"
-        return
+        if validate::block_device "$DISK"; then
+            log::info "Disk loaded from preset: $DISK"
+            return
+        else
+            log::warn "Preset DISK '$DISK' is not a valid block device; falling back to prompt."
+            DISK=""
+        fi
     fi
 
     echo "Available disks:"
@@ -98,8 +103,13 @@ ui::_select_disk() {
 
 ui::_prompt_hostname() {
     if [[ -n "${HOSTNAME:-}" ]]; then
-        log::info "Hostname loaded from preset: $HOSTNAME"
-        return
+        if validate::hostname "$HOSTNAME"; then
+            log::info "Hostname loaded from preset: $HOSTNAME"
+            return
+        else
+            log::warn "Preset HOSTNAME '$HOSTNAME' is invalid; falling back to prompt."
+            HOSTNAME=""
+        fi
     fi
 
     while true; do
@@ -117,8 +127,13 @@ ui::_prompt_hostname() {
 
 ui::_prompt_username() {
     if [[ -n "${USERNAME:-}" ]]; then
-        log::info "Username loaded from preset: $USERNAME"
-        return
+        if validate::username "$USERNAME"; then
+            log::info "Username loaded from preset: $USERNAME"
+            return
+        else
+            log::warn "Preset USERNAME '$USERNAME' is invalid; falling back to prompt."
+            USERNAME=""
+        fi
     fi
 
     while true; do
@@ -140,7 +155,7 @@ ui::_prompt_root_password() {
         read -rsp "Root password: " ROOT_PASSWORD
         echo ""
         if ! validate::password "$ROOT_PASSWORD"; then
-            echo "Password must be at least 8 characters. Try again."
+            echo "Password must be at least 8 characters and must not contain ':'. Try again."
             echo ""
             continue
         fi
@@ -163,7 +178,7 @@ ui::_prompt_user_password() {
         read -rsp "User password: " USER_PASSWORD
         echo ""
         if ! validate::password "$USER_PASSWORD"; then
-            echo "Password must be at least 8 characters. Try again."
+            echo "Password must be at least 8 characters and must not contain ':'. Try again."
             echo ""
             continue
         fi
@@ -182,8 +197,13 @@ ui::_prompt_user_password() {
 
 ui::_select_timezone() {
     if [[ -n "${TIMEZONE:-}" ]]; then
-        log::info "Timezone loaded from preset: $TIMEZONE"
-        return
+        if validate::timezone "$TIMEZONE"; then
+            log::info "Timezone loaded from preset: $TIMEZONE"
+            return
+        else
+            log::warn "Preset TIMEZONE '$TIMEZONE' is invalid; falling back to prompt."
+            TIMEZONE=""
+        fi
     fi
 
     echo "Select timezone region:"
@@ -272,8 +292,21 @@ ui::_select_timezone() {
 
 ui::_select_locale() {
     if [[ -n "${LOCALE:-}" ]]; then
-        log::info "Locale loaded from preset: $LOCALE"
-        return
+        local valid_locale=false
+        local l
+        for l in "${LOCALE_ARR[@]}"; do
+            if [[ "$l" == "$LOCALE" ]]; then
+                valid_locale=true
+                break
+            fi
+        done
+        if $valid_locale; then
+            log::info "Locale loaded from preset: $LOCALE"
+            return
+        else
+            log::warn "Preset LOCALE '$LOCALE' is not a supported locale; falling back to prompt."
+            LOCALE=""
+        fi
     fi
 
     local total=${#LOCALE_ARR[@]}
