@@ -250,7 +250,7 @@ ui::_select_timezone() {
     echo "Select timezone city:"
     echo ""
 
-    mapfile -t CITIES < <(find /usr/share/zoneinfo/"$region"/ -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
+    mapfile -t CITIES < <(find /usr/share/zoneinfo/"$region"/ -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
     total=${#CITIES[@]}
     start=0
 

@@ -34,6 +34,7 @@ preset::load() {
 
         # Only accept whitelisted keys
         local allowed=false
+        local allowed_key
         for allowed_key in "${PRESET_ALLOWED_KEYS[@]}"; do
             if [[ "$key" == "$allowed_key" ]]; then
                 allowed=true
