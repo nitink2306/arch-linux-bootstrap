@@ -23,6 +23,13 @@ log() {
 }
 
 # ------------------------------------------------------------
+# UNSET SHELL ENVIRONMENT VARIABLES
+# Prevents shell environment (e.g. $HOSTNAME) from bleeding
+# into prompt logic and falsely skipping interactive prompts
+# ------------------------------------------------------------
+unset DISK HOSTNAME USERNAME TIMEZONE LOCALE
+
+# ------------------------------------------------------------
 # PRESET LOADING
 # If --preset flag is passed, load values from config file
 # and skip interactive prompts for those values
