@@ -146,7 +146,7 @@ done
 echo "Select timezone region:"
 echo ""
 
-REGIONS=($(ls /usr/share/zoneinfo/ | grep -v '\.' | grep -v 'posix' | grep -v 'right' | sort))
+mapfile -t REGIONS < <(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep -vE '^(posix|right)$' | sort)
 PAGE_SIZE=10
 TOTAL=${#REGIONS[@]}
 START=0
@@ -188,7 +188,7 @@ done
 echo "Select timezone city:"
 echo ""
 
-CITIES=($(ls /usr/share/zoneinfo/$REGION/ | sort))
+mapfile -t CITIES < <(find "/usr/share/zoneinfo/$REGION" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
 TOTAL=${#CITIES[@]}
 START=0
 
@@ -492,6 +492,8 @@ grub-mkconfig -o /boot/grub/grub.cfg
 # enable services
 systemctl enable NetworkManager
 systemctl enable sddm
+ln -sf /usr/lib/systemd/system/NetworkManager.service /etc/systemd/system/multi-user.target.wants/NetworkManager.service
+ln -sf /usr/lib/systemd/system/sddm.service /etc/systemd/system/display-manager.service
 
 # desktop environment
 pacman -S --noconfirm --needed plasma kde-applications
