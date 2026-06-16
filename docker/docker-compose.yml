@@ -1,0 +1,10 @@
+services:
+  arch-server:
+    image: nginx:alpine
+    container_name: arch-server
+    ports:
+      - "8080:80"
+    volumes:
+      - ./:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    restart: unless-stopped
