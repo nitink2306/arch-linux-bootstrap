@@ -3,8 +3,9 @@
 # Run with: bash arch-install.sh --preset presets/default.conf
 # Passwords are never stored here — you will always be prompted
 
-DISK=/dev/sda
-HOSTNAME=myarch
-USERNAME=nitin
-TIMEZONE=America/Chicago
-LOCALE=en_US.UTF-8
+DISK="/dev/sda"
+HOSTNAME="myarch"
+USERNAME="nitin"
+TIMEZONE="America/Chicago"
+LOCALE="en_US.UTF-8"
+REFLECTOR_COUNTRY="United States"

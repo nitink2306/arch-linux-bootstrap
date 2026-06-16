@@ -1,0 +1,11 @@
+processor	: 0
+vendor_id	: AuthenticAMD
+cpu family	: 23
+model		: 113
+model name	: AMD Ryzen 7 3700X 8-Core Processor
+stepping	: 0
+microcode	: 0x8701021
+cpu MHz		: 3600.000
+cache size	: 512 KB
+physical id	: 0
+siblings	: 16
