@@ -48,7 +48,8 @@ setup() {
 }
 
 @test "preset::load strips double quotes from values" {
-    local tmp_file="/tmp/test_quoted_preset.conf"
+    local tmp_file
+    tmp_file="$(mktemp)"
     printf 'HOSTNAME="my-quoted-host"\n' > "$tmp_file"
 
     unset HOSTNAME
@@ -58,7 +59,8 @@ setup() {
 }
 
 @test "preset::load strips single quotes from values" {
-    local tmp_file="/tmp/test_squoted_preset.conf"
+    local tmp_file
+    tmp_file="$(mktemp)"
     printf "HOSTNAME='my-squoted-host'\n" > "$tmp_file"
 
     unset HOSTNAME
@@ -80,7 +82,8 @@ setup() {
     LOCALE="en_US.UTF-8"
     REFLECTOR_COUNTRY="Germany"
 
-    local tmp_file="/tmp/test_save_preset.conf"
+    local tmp_file
+    tmp_file="$(mktemp)"
     preset::save "$tmp_file"
 
     # All values should be double-quoted

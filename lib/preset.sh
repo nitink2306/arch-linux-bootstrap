@@ -19,6 +19,10 @@ preset::load() {
         [[ "$key" =~ ^[[:space:]]*# ]] && continue
         [[ -z "$key" ]] && continue
 
+        # Strip trailing carriage return (CRLF files)
+        key="${key%$'\r'}"
+        value="${value%$'\r'}"
+
         # Trim whitespace
         key="${key#"${key%%[![:space:]]*}"}"
         key="${key%"${key##*[![:space:]]}"}"
