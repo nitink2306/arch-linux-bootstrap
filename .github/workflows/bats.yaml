@@ -1,0 +1,26 @@
+name: BATS Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run BATS tests
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux/archlinux:latest
+
+    steps:
+      - name: Install dependencies
+        run: pacman --noconfirm -Sy git bats shellcheck
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run BATS tests
+        run: bats tests/
