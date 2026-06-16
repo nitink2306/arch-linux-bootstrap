@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Install dependencies
-        run: pacman --noconfirm -Sy git bats shellcheck
+        run: pacman --noconfirm -Syu --needed git bats shellcheck
 
       - name: Checkout code
         uses: actions/checkout@v4

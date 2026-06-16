@@ -16,7 +16,7 @@ validate::username() {
 
 validate::password() {
     local pass="${1:-}"
-    [[ ${#pass} -ge 8 ]]
+    [[ ${#pass} -ge 8 && "$pass" != *:* ]]
 }
 
 validate::block_device() {

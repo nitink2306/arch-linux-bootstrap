@@ -12,7 +12,11 @@ DRY_RUN=false; PRESET_FILE=""; PRESET_MODE=false; export PRESET_MODE
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --preset) PRESET_FILE="${2:-}"; shift 2 ;;
+            --preset)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --preset requires a file argument" >&2; exit 1
+                fi
+                PRESET_FILE="$2"; shift 2 ;;
             --dry-run) DRY_RUN=true; shift ;;
             --help) echo "Usage: arch-install.sh [--preset FILE] [--dry-run] [--help]"; exit 0 ;;
             *) shift ;;
@@ -54,7 +58,7 @@ main() {
     pacstrap::install "$MICROCODE"
     chroot::configure "$TIMEZONE" "$LOCALE" "$HOSTNAME" "$ROOT_PASSWORD" "$USERNAME" "$USER_PASSWORD" "$BOOT_MODE" "$DISK"
     preset::copy_to_system "$USERNAME" "$SCRIPT_DIR"
-    cp "$LOG_TMP" "$LOG_FINAL"; disk::unmount; ui::prompt_reboot
+    disk::unmount; ui::prompt_reboot
 }
 
 main "$@"

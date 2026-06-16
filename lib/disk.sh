@@ -90,6 +90,6 @@ disk::mount() {
 disk::unmount() {
     log::info "Unmounting filesystems..."
     # Release the tee file handle to prevent "target is busy" error
-    exec > /dev/tty 2>&1
+    exec > /dev/tty 2>&1 || true
     umount -R /mnt
 }

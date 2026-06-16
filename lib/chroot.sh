@@ -22,7 +22,7 @@ chroot::configure() {
 
     # Write the password file with restricted permissions
     local pass_file="/mnt/tmp/arch-chroot-passwords"
-    install -m 700 /dev/null "$pass_file"
+    install -m 600 /dev/null "$pass_file"
     printf '%s:%s\n' "root" "$root_password" > "$pass_file"
     printf '%s:%s\n' "$username" "$user_password" >> "$pass_file"
 

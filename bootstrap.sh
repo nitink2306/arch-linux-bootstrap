@@ -9,8 +9,15 @@ set -euo pipefail
 REPO_URL="https://github.com/nitink2306/arch-linux-bootstrap.git"
 CLONE_DIR="/tmp/arch-bootstrap"
 
-if [ ! -d "$CLONE_DIR" ]; then
+if [ -d "$CLONE_DIR/.git" ]; then
+    echo "Updating arch-linux-bootstrap..."
+    git -C "$CLONE_DIR" pull --ff-only
+elif [ ! -d "$CLONE_DIR" ]; then
     echo "Cloning arch-linux-bootstrap..."
+    git clone --depth=1 "$REPO_URL" "$CLONE_DIR"
+else
+    echo "Directory exists but is not a git repo; re-cloning..."
+    rm -rf "$CLONE_DIR"
     git clone --depth=1 "$REPO_URL" "$CLONE_DIR"
 fi
 
