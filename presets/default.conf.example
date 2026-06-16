@@ -1,0 +1,10 @@
+# arch-linux-bootstrap preset example
+# Copy this file to default.conf and fill in your values
+# Run with: bash arch-install.sh --preset presets/default.conf
+# Passwords are never stored here — you will always be prompted
+
+DISK=/dev/sda
+HOSTNAME=myarch
+USERNAME=nitin
+TIMEZONE=America/Chicago
+LOCALE=en_US.UTF-8

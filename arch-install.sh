@@ -4,7 +4,43 @@ set -e
 # ============================================================
 # Arch Linux Install Script
 # Supports: VM and bare metal, UEFI and BIOS, Intel and AMD
+# Usage:
+#   Interactive : bash arch-install.sh
+#   With preset : bash arch-install.sh --preset presets/default.conf
 # ============================================================
+
+# ------------------------------------------------------------
+# LOGGING
+# Sets up dual logging to /tmp and later to the installed system
+# ------------------------------------------------------------
+LOG_TMP="/tmp/arch-install.log"
+LOG_FINAL="/mnt/var/log/arch-install.log"
+exec > >(tee -a "$LOG_TMP") 2>&1
+echo "Install started at $(date)" >> "$LOG_TMP"
+
+log() {
+    echo "[$(date '+%H:%M:%S')] $*"
+}
+
+# ------------------------------------------------------------
+# PRESET LOADING
+# If --preset flag is passed, load values from config file
+# and skip interactive prompts for those values
+# ------------------------------------------------------------
+PRESET_FILE=""
+PRESET_MODE=false
+
+if [[ "$1" == "--preset" && -n "$2" ]]; then
+    PRESET_FILE="$2"
+    if [ ! -f "$PRESET_FILE" ]; then
+        echo "Error: preset file '$PRESET_FILE' not found."
+        exit 1
+    fi
+    # shellcheck source=/dev/null
+    source "$PRESET_FILE"
+    PRESET_MODE=true
+    log "Preset loaded from $PRESET_FILE"
+fi
 
 echo "============================================================"
 echo " Arch Linux Installer"
@@ -19,7 +55,7 @@ if [ -d /sys/firmware/efi ]; then
 else
     BOOT_MODE="bios"
 fi
-echo "Boot mode detected: $BOOT_MODE"
+log "Boot mode detected: $BOOT_MODE"
 
 # ------------------------------------------------------------
 # AUTO-DETECT CPU VENDOR
@@ -31,83 +67,116 @@ elif [ "$CPU_VENDOR" = "AuthenticAMD" ]; then
     MICROCODE="amd-ucode"
 else
     MICROCODE=""
-    echo "Warning: Could not detect CPU vendor. Microcode will not be installed."
+    log "Warning: Could not detect CPU vendor. Microcode will not be installed."
 fi
-echo "CPU vendor detected: $CPU_VENDOR → $MICROCODE"
+log "CPU vendor detected: $CPU_VENDOR → ${MICROCODE:-none}"
+echo ""
+
+# ------------------------------------------------------------
+# REFLECTOR — rank mirrors by speed before pacstrap
+# Picks the 10 fastest HTTPS mirrors for your country
+# Falls back silently if reflector isn't available
+# ------------------------------------------------------------
+log "Ranking mirrors with reflector..."
+if command -v reflector &>/dev/null; then
+    reflector \
+        --country "United States" \
+        --latest 20 \
+        --protocol https \
+        --sort rate \
+        --number 10 \
+        --save /etc/pacman.d/mirrorlist
+    log "Mirrors updated."
+else
+    log "reflector not found — using default mirrorlist."
+fi
 echo ""
 
 # ------------------------------------------------------------
 # DISK SELECTION
 # ------------------------------------------------------------
-echo "Available disks:"
-echo ""
-lsblk -d -o NAME,SIZE,MODEL
-echo ""
+if [ -z "${DISK:-}" ]; then
+    echo "Available disks:"
+    echo ""
+    lsblk -d -o NAME,SIZE,MODEL
+    echo ""
 
-while true; do
-    read -p "Enter target disk (e.g. /dev/sda): " DISK
-    if [ ! -b "$DISK" ]; then
-        echo "Error: $DISK is not a valid block device. Try again."
-        echo ""
-        continue
-    fi
-    read -p "Confirm target disk (type it again): " DISK_CONFIRM
-    if [ "$DISK" = "$DISK_CONFIRM" ]; then
-        echo "Disk set to $DISK"
-        echo ""
-        break
-    else
-        echo "Disks do not match. Start over."
-        echo ""
-    fi
-done
+    while true; do
+        read -rp "Enter target disk (e.g. /dev/sda): " DISK
+        if [ ! -b "$DISK" ]; then
+            echo "Error: $DISK is not a valid block device. Try again."
+            echo ""
+            continue
+        fi
+        read -rp "Confirm target disk (type it again): " DISK_CONFIRM
+        if [ "$DISK" = "$DISK_CONFIRM" ]; then
+            log "Disk set to $DISK"
+            echo ""
+            break
+        else
+            echo "Disks do not match. Start over."
+            echo ""
+        fi
+    done
+else
+    log "Disk loaded from preset: $DISK"
+fi
 
 # ------------------------------------------------------------
 # HOSTNAME
 # ------------------------------------------------------------
-while true; do
-    read -p "Enter hostname: " HOSTNAME
-    if [[ "$HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
-        echo "Hostname set to $HOSTNAME"
-        echo ""
-        break
-    else
-        echo "Invalid hostname. Letters, numbers, hyphens only. Cannot start or end with a hyphen. Max 63 characters."
-        echo ""
-    fi
-done
+if [ -z "${HOSTNAME:-}" ]; then
+    while true; do
+        read -rp "Enter hostname: " HOSTNAME
+        if [[ "$HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
+            log "Hostname set to $HOSTNAME"
+            echo ""
+            break
+        else
+            echo "Invalid hostname. Letters, numbers, hyphens only. Cannot start or end with a hyphen. Max 63 characters."
+            echo ""
+        fi
+    done
+else
+    log "Hostname loaded from preset: $HOSTNAME"
+fi
 
 # ------------------------------------------------------------
 # USERNAME
 # ------------------------------------------------------------
-while true; do
-    read -p "Enter username: " USERNAME
-    if [[ "$USERNAME" =~ ^[a-z][a-z0-9_-]{0,31}$ ]]; then
-        echo "Username set to $USERNAME"
-        echo ""
-        break
-    else
-        echo "Invalid username. Must start with a lowercase letter, lowercase only, no spaces, max 32 characters."
-        echo ""
-    fi
-done
+if [ -z "${USERNAME:-}" ]; then
+    while true; do
+        read -rp "Enter username: " USERNAME
+        if [[ "$USERNAME" =~ ^[a-z][a-z0-9_-]{0,31}$ ]]; then
+            log "Username set to $USERNAME"
+            echo ""
+            break
+        else
+            echo "Invalid username. Must start with a lowercase letter, lowercase only, no spaces, max 32 characters."
+            echo ""
+        fi
+    done
+else
+    log "Username loaded from preset: $USERNAME"
+fi
 
 # ------------------------------------------------------------
 # ROOT PASSWORD
+# Passwords are never loaded from preset — always prompted
 # ------------------------------------------------------------
 echo "Set root password:"
 while true; do
-    read -sp "Root password: " ROOT_PASSWORD
+    read -rsp "Root password: " ROOT_PASSWORD
     echo ""
     if [ -z "$ROOT_PASSWORD" ]; then
         echo "Password cannot be empty. Try again."
         echo ""
         continue
     fi
-    read -sp "Confirm root password: " ROOT_PASSWORD_CONFIRM
+    read -rsp "Confirm root password: " ROOT_PASSWORD_CONFIRM
     echo ""
     if [ "$ROOT_PASSWORD" = "$ROOT_PASSWORD_CONFIRM" ]; then
-        echo "Root password set."
+        log "Root password set."
         echo ""
         break
     else
@@ -121,17 +190,17 @@ done
 # ------------------------------------------------------------
 echo "Set password for $USERNAME:"
 while true; do
-    read -sp "User password: " USER_PASSWORD
+    read -rsp "User password: " USER_PASSWORD
     echo ""
     if [ -z "$USER_PASSWORD" ]; then
         echo "Password cannot be empty. Try again."
         echo ""
         continue
     fi
-    read -sp "Confirm user password: " USER_PASSWORD_CONFIRM
+    read -rsp "Confirm user password: " USER_PASSWORD_CONFIRM
     echo ""
     if [ "$USER_PASSWORD" = "$USER_PASSWORD_CONFIRM" ]; then
-        echo "User password set."
+        log "User password set."
         echo ""
         break
     else
@@ -141,91 +210,96 @@ while true; do
 done
 
 # ------------------------------------------------------------
-# TIMEZONE — numbered region then city with pagination
+# TIMEZONE
 # ------------------------------------------------------------
-echo "Select timezone region:"
-echo ""
-
-mapfile -t REGIONS < <(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep -vE '^(posix|right)$' | sort)
 PAGE_SIZE=10
-TOTAL=${#REGIONS[@]}
-START=0
 
-while true; do
-    END=$((START + PAGE_SIZE))
-    [ $END -gt $TOTAL ] && END=$TOTAL
+if [ -z "${TIMEZONE:-}" ]; then
+    echo "Select timezone region:"
+    echo ""
 
-    for i in $(seq $START $((END - 1))); do
-        echo "  $((i + 1))) ${REGIONS[$i]}"
+    REGIONS=($(ls /usr/share/zoneinfo/ | grep -v '\.' | grep -v 'posix' | grep -v 'right' | sort))
+    TOTAL=${#REGIONS[@]}
+    START=0
+
+    while true; do
+        END=$((START + PAGE_SIZE))
+        [ $END -gt $TOTAL ] && END=$TOTAL
+
+        for i in $(seq $START $((END - 1))); do
+            echo "  $((i + 1))) ${REGIONS[$i]}"
+        done
+
+        echo ""
+        if [ $END -lt $TOTAL ]; then
+            read -rp "Enter number to select or press ENTER for more: " REGION_INPUT
+        else
+            START=0
+            read -rp "Enter number to select or press ENTER to start over: " REGION_INPUT
+        fi
+
+        if [ -z "$REGION_INPUT" ]; then
+            START=$END
+            [ $START -ge $TOTAL ] && START=0
+            echo ""
+            continue
+        fi
+
+        if [[ "$REGION_INPUT" =~ ^[0-9]+$ ]] && [ "$REGION_INPUT" -ge 1 ] && [ "$REGION_INPUT" -le $TOTAL ]; then
+            REGION="${REGIONS[$((REGION_INPUT - 1))]}"
+            log "Region set to $REGION"
+            echo ""
+            break
+        else
+            echo "Invalid selection. Try again."
+            echo ""
+        fi
     done
 
+    echo "Select timezone city:"
     echo ""
-    if [ $END -lt $TOTAL ]; then
-        read -p "Enter number to select or press ENTER for more: " REGION_INPUT
-    else
-        START=0
-        read -p "Enter number to select or press ENTER to start over: " REGION_INPUT
-    fi
 
-    if [ -z "$REGION_INPUT" ]; then
-        START=$END
-        [ $START -ge $TOTAL ] && START=0
+    CITIES=($(ls /usr/share/zoneinfo/"$REGION"/ | sort))
+    TOTAL=${#CITIES[@]}
+    START=0
+
+    while true; do
+        END=$((START + PAGE_SIZE))
+        [ $END -gt $TOTAL ] && END=$TOTAL
+
+        for i in $(seq $START $((END - 1))); do
+            echo "  $((i + 1))) ${CITIES[$i]}"
+        done
+
         echo ""
-        continue
-    fi
+        if [ $END -lt $TOTAL ]; then
+            read -rp "Enter number to select or press ENTER for more: " CITY_INPUT
+        else
+            START=0
+            read -rp "Enter number to select or press ENTER to start over: " CITY_INPUT
+        fi
 
-    if [[ "$REGION_INPUT" =~ ^[0-9]+$ ]] && [ "$REGION_INPUT" -ge 1 ] && [ "$REGION_INPUT" -le $TOTAL ]; then
-        REGION="${REGIONS[$((REGION_INPUT - 1))]}"
-        echo "Region set to $REGION"
-        echo ""
-        break
-    else
-        echo "Invalid selection. Try again."
-        echo ""
-    fi
-done
+        if [ -z "$CITY_INPUT" ]; then
+            START=$END
+            [ $START -ge $TOTAL ] && START=0
+            echo ""
+            continue
+        fi
 
-echo "Select timezone city:"
-echo ""
-
-mapfile -t CITIES < <(find "/usr/share/zoneinfo/$REGION" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
-TOTAL=${#CITIES[@]}
-START=0
-
-while true; do
-    END=$((START + PAGE_SIZE))
-    [ $END -gt $TOTAL ] && END=$TOTAL
-
-    for i in $(seq $START $((END - 1))); do
-        echo "  $((i + 1))) ${CITIES[$i]}"
+        if [[ "$CITY_INPUT" =~ ^[0-9]+$ ]] && [ "$CITY_INPUT" -ge 1 ] && [ "$CITY_INPUT" -le $TOTAL ]; then
+            CITY="${CITIES[$((CITY_INPUT - 1))]}"
+            TIMEZONE="$REGION/$CITY"
+            log "Timezone set to $TIMEZONE"
+            echo ""
+            break
+        else
+            echo "Invalid selection. Try again."
+            echo ""
+        fi
     done
-
-    echo ""
-    if [ $END -lt $TOTAL ]; then
-        read -p "Enter number to select or press ENTER for more: " CITY_INPUT
-    else
-        START=0
-        read -p "Enter number to select or press ENTER to start over: " CITY_INPUT
-    fi
-
-    if [ -z "$CITY_INPUT" ]; then
-        START=$END
-        [ $START -ge $TOTAL ] && START=0
-        echo ""
-        continue
-    fi
-
-    if [[ "$CITY_INPUT" =~ ^[0-9]+$ ]] && [ "$CITY_INPUT" -ge 1 ] && [ "$CITY_INPUT" -le $TOTAL ]; then
-        CITY="${CITIES[$((CITY_INPUT - 1))]}"
-        TIMEZONE="$REGION/$CITY"
-        echo "Timezone set to $TIMEZONE"
-        echo ""
-        break
-    else
-        echo "Invalid selection. Try again."
-        echo ""
-    fi
-done
+else
+    log "Timezone loaded from preset: $TIMEZONE"
+fi
 
 # ------------------------------------------------------------
 # LOCALE
@@ -255,47 +329,52 @@ LOCALE_ARR=(
     "tr_TR.UTF-8"
 )
 DEFAULT_LOCALE="en_US.UTF-8"
-TOTAL=${#LOCALE_ARR[@]}
-START=0
 
-echo "Available locales (default: $DEFAULT_LOCALE):"
-echo ""
+if [ -z "${LOCALE:-}" ]; then
+    TOTAL=${#LOCALE_ARR[@]}
+    START=0
 
-while true; do
-    END=$((START + PAGE_SIZE))
-    [ $END -gt $TOTAL ] && END=$TOTAL
-
-    for i in $(seq $START $((END - 1))); do
-        echo "  $((i + 1))) ${LOCALE_ARR[$i]}"
-    done
-
+    echo "Available locales (default: $DEFAULT_LOCALE):"
     echo ""
-    if [ $END -lt $TOTAL ]; then
-        read -p "Enter number to select, press ENTER for more, or press ENTER at end for default [$DEFAULT_LOCALE]: " LOCALE_INPUT
-    else
-        START=0
-        read -p "Enter number to select, press ENTER for default [$DEFAULT_LOCALE], or press ENTER to start over: " LOCALE_INPUT
-    fi
 
-    if [ -z "$LOCALE_INPUT" ] && [ $END -ge $TOTAL ]; then
-        LOCALE="$DEFAULT_LOCALE"
-        echo "Locale set to $LOCALE"
+    while true; do
+        END=$((START + PAGE_SIZE))
+        [ $END -gt $TOTAL ] && END=$TOTAL
+
+        for i in $(seq $START $((END - 1))); do
+            echo "  $((i + 1))) ${LOCALE_ARR[$i]}"
+        done
+
         echo ""
-        break
-    elif [ -z "$LOCALE_INPUT" ]; then
-        START=$END
-        echo ""
-        continue
-    elif [[ "$LOCALE_INPUT" =~ ^[0-9]+$ ]] && [ "$LOCALE_INPUT" -ge 1 ] && [ "$LOCALE_INPUT" -le $TOTAL ]; then
-        LOCALE="${LOCALE_ARR[$((LOCALE_INPUT - 1))]}"
-        echo "Locale set to $LOCALE"
-        echo ""
-        break
-    else
-        echo "Invalid selection. Try again."
-        echo ""
-    fi
-done
+        if [ $END -lt $TOTAL ]; then
+            read -rp "Enter number to select, press ENTER for more, or press ENTER at end for default [$DEFAULT_LOCALE]: " LOCALE_INPUT
+        else
+            START=0
+            read -rp "Enter number to select, press ENTER for default [$DEFAULT_LOCALE], or press ENTER to start over: " LOCALE_INPUT
+        fi
+
+        if [ -z "$LOCALE_INPUT" ] && [ $END -ge $TOTAL ]; then
+            LOCALE="$DEFAULT_LOCALE"
+            log "Locale set to $LOCALE"
+            echo ""
+            break
+        elif [ -z "$LOCALE_INPUT" ]; then
+            START=$END
+            echo ""
+            continue
+        elif [[ "$LOCALE_INPUT" =~ ^[0-9]+$ ]] && [ "$LOCALE_INPUT" -ge 1 ] && [ "$LOCALE_INPUT" -le $TOTAL ]; then
+            LOCALE="${LOCALE_ARR[$((LOCALE_INPUT - 1))]}"
+            log "Locale set to $LOCALE"
+            echo ""
+            break
+        else
+            echo "Invalid selection. Try again."
+            echo ""
+        fi
+    done
+else
+    log "Locale loaded from preset: $LOCALE"
+fi
 
 # ------------------------------------------------------------
 # SUMMARY + CONFIRMATION
@@ -311,17 +390,19 @@ echo "  Hostname    : $HOSTNAME"
 echo "  Username    : $USERNAME"
 echo "  Timezone    : $TIMEZONE"
 echo "  Locale      : $LOCALE"
+echo "  Preset mode : $PRESET_MODE"
 echo ""
 echo "WARNING: $DISK will be wiped. This cannot be undone."
 echo ""
-read -p "Proceed with installation? (y/n): " CONFIRM
+read -rp "Proceed with installation? (y/n): " CONFIRM
 if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
+    log "Aborted by user."
     echo "Aborted."
     exit 0
 fi
 
 echo ""
-echo "Starting installation..."
+log "Installation started."
 
 # ------------------------------------------------------------
 # PARTITION NAMING
@@ -337,19 +418,19 @@ fi
 # ------------------------------------------------------------
 # WIPE + PARTITION
 # ------------------------------------------------------------
-echo "Wiping $DISK..."
+log "Wiping $DISK..."
 wipefs -af "$DISK"
 sgdisk -Z "$DISK"
 
 if [ "$BOOT_MODE" = "uefi" ]; then
-    echo "Creating GPT partition table (UEFI)..."
+    log "Creating GPT partition table (UEFI)..."
     parted -s "$DISK" \
         mklabel gpt \
         mkpart ESP fat32 1MiB 513MiB \
         set 1 esp on \
         mkpart primary btrfs 513MiB 100%
 else
-    echo "Creating MBR partition table (BIOS)..."
+    log "Creating MBR partition table (BIOS)..."
     parted -s "$DISK" \
         mklabel msdos \
         mkpart primary 1MiB 2MiB \
@@ -357,13 +438,13 @@ else
         mkpart primary btrfs 2MiB 100%
 fi
 
-echo "Partitioning complete."
+log "Partitioning complete."
 echo ""
 
 # ------------------------------------------------------------
 # FORMAT
 # ------------------------------------------------------------
-echo "Formatting partitions..."
+log "Formatting partitions..."
 
 if [ "$BOOT_MODE" = "uefi" ]; then
     mkfs.fat -F32 "$PART1"
@@ -371,13 +452,13 @@ fi
 
 mkfs.btrfs -f -L ArchRoot "$PART2"
 
-echo "Formatting complete."
+log "Formatting complete."
 echo ""
 
 # ------------------------------------------------------------
 # BTRFS SUBVOLUMES
 # ------------------------------------------------------------
-echo "Creating btrfs subvolumes..."
+log "Creating btrfs subvolumes..."
 
 mount "$PART2" /mnt
 
@@ -388,13 +469,13 @@ btrfs subvolume create /mnt/@var_log
 
 umount /mnt
 
-echo "Subvolumes created."
+log "Subvolumes created."
 echo ""
 
 # ------------------------------------------------------------
 # MOUNT
 # ------------------------------------------------------------
-echo "Mounting filesystems..."
+log "Mounting filesystems..."
 
 mount -o noatime,compress=zstd,subvol=@ "$PART2" /mnt
 
@@ -408,34 +489,64 @@ if [ "$BOOT_MODE" = "uefi" ]; then
     mount "$PART1" /mnt/boot
 fi
 
-echo "Filesystems mounted."
+log "Filesystems mounted."
 echo ""
+
+# ------------------------------------------------------------
+# COPY LOG TO INSTALLED SYSTEM
+# Now that /mnt/var/log is mounted we start persisting the log
+# ------------------------------------------------------------
+cp "$LOG_TMP" "$LOG_FINAL"
+exec > >(tee -a "$LOG_FINAL") 2>&1
+log "Log now persisting to $LOG_FINAL on installed system."
 
 # ------------------------------------------------------------
 # FSTAB
 # ------------------------------------------------------------
-echo "Generating fstab..."
-
+log "Generating fstab..."
 mkdir -p /mnt/etc
 genfstab -U /mnt >> /mnt/etc/fstab
-
-echo "fstab generated."
+log "fstab generated."
 echo ""
 
 # ------------------------------------------------------------
 # PACSTRAP
 # ------------------------------------------------------------
-echo "Installing base system..."
-
+log "Installing base system..."
 pacstrap /mnt base base-devel linux linux-firmware sudo vim git $MICROCODE
-
-echo "Base system installed."
+log "Base system installed."
 echo ""
+
+# ------------------------------------------------------------
+# SAVE PRESET
+# Ask user if they want to save their answers as a preset
+# Saved to presets/default.conf relative to script location
+# Passwords are never saved
+# ------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$SCRIPT_DIR/presets"
+
+read -rp "Save these settings as a preset for future installs? (y/n): " SAVE_PRESET
+if [[ "$SAVE_PRESET" == "y" || "$SAVE_PRESET" == "Y" ]]; then
+    cat > "$SCRIPT_DIR/presets/default.conf" << PRESET
+# arch-linux-bootstrap preset
+# Generated on $(date)
+# Passwords are never saved — you will always be prompted for those
+
+DISK=$DISK
+HOSTNAME=$HOSTNAME
+USERNAME=$USERNAME
+TIMEZONE=$TIMEZONE
+LOCALE=$LOCALE
+PRESET
+    log "Preset saved to $SCRIPT_DIR/presets/default.conf"
+    echo ""
+fi
 
 # ------------------------------------------------------------
 # CHROOT
 # ------------------------------------------------------------
-echo "Entering chroot..."
+log "Entering chroot..."
 
 arch-chroot /mnt /bin/bash << CHROOT
 
@@ -447,7 +558,7 @@ hwclock --systohc
 
 # locale
 ESCAPED_LOCALE=$(echo "$LOCALE" | sed 's/\./\\./g')
-sed -i "s/^#${ESCAPED_LOCALE} UTF-8$/${LOCALE} UTF-8/" /etc/locale.gen
+sed -i "s/^#\${ESCAPED_LOCALE} UTF-8\$/\${LOCALE} UTF-8/" /etc/locale.gen
 locale-gen
 echo "LANG=$LOCALE" > /etc/locale.conf
 
@@ -500,8 +611,14 @@ pacman -S --noconfirm --needed plasma kde-applications
 
 CHROOT
 
-echo "Chroot configuration complete."
+log "Chroot configuration complete."
 echo ""
+
+# ------------------------------------------------------------
+# COPY FINAL LOG INTO INSTALLED SYSTEM
+# ------------------------------------------------------------
+cp "$LOG_TMP" "$LOG_FINAL"
+log "Final log saved to $LOG_FINAL"
 
 # ------------------------------------------------------------
 # UNMOUNT + REBOOT
@@ -510,12 +627,12 @@ echo "============================================================"
 echo " Installation Complete"
 echo "============================================================"
 echo ""
-echo "Unmounting filesystems..."
+log "Unmounting filesystems..."
 umount -R /mnt
 echo ""
 echo "Done. Remove installation media and reboot."
 echo ""
-read -p "Reboot now? (y/n): " REBOOT
+read -rp "Reboot now? (y/n): " REBOOT
 if [[ "$REBOOT" == "y" || "$REBOOT" == "Y" ]]; then
     reboot
 else
