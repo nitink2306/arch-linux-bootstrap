@@ -547,6 +547,12 @@ TIMEZONE=$TIMEZONE
 LOCALE=$LOCALE
 PRESET
     log "Preset saved to $SCRIPT_DIR/presets/default.conf"
+
+    # The live ISO runs in RAM and is gone after reboot.
+    # Copy the preset to the installed system so it survives.
+    mkdir -p "/mnt/home/$USERNAME"
+    cp "$SCRIPT_DIR/presets/default.conf" "/mnt/home/$USERNAME/arch-bootstrap-preset.conf"
+    log "Preset also copied to /home/$USERNAME/arch-bootstrap-preset.conf on installed system."
     echo ""
 fi
 
