@@ -6,7 +6,7 @@ for lib in log validate preset detect ui disk pacstrap chroot; do
     # shellcheck source=/dev/null
     source "$SCRIPT_DIR/lib/${lib}.sh"
 done
-unset DISK HOSTNAME USERNAME TIMEZONE LOCALE
+unset DISK HOSTNAME USERNAME TIMEZONE LOCALE REFLECTOR_COUNTRY
 DRY_RUN=false; PRESET_FILE=""; PRESET_MODE=false; export PRESET_MODE
 
 parse_args() {

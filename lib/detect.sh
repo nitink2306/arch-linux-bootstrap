@@ -14,7 +14,7 @@ detect::boot_mode() {
 detect::cpu_vendor() {
     local cpuinfo="${1:-/proc/cpuinfo}"
     local vendor
-    vendor=$(grep -m1 "vendor_id" "$cpuinfo" | awk '{print $3}')
+    vendor=$(grep -m1 "vendor_id" "$cpuinfo" 2>/dev/null | awk '{print $3}') || vendor=""
 
     case "$vendor" in
         GenuineIntel) echo "intel-ucode" ;;
