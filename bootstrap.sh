@@ -9,6 +9,11 @@ set -euo pipefail
 REPO_URL="https://github.com/nitink2306/arch-linux-bootstrap.git"
 CLONE_DIR="/tmp/arch-bootstrap"
 
+if ! command -v git &>/dev/null; then
+    echo "Error: git is required but not installed. Install git and re-run." >&2
+    exit 1
+fi
+
 if [ -d "$CLONE_DIR/.git" ]; then
     echo "Updating arch-linux-bootstrap..."
     git -C "$CLONE_DIR" pull --ff-only
@@ -21,4 +26,8 @@ else
     git clone --depth=1 "$REPO_URL" "$CLONE_DIR"
 fi
 
-exec bash "$CLONE_DIR/arch-install.sh" "$@"
+if [ -e /dev/tty ]; then
+    exec bash "$CLONE_DIR/arch-install.sh" "$@" </dev/tty
+else
+    exec bash "$CLONE_DIR/arch-install.sh" "$@"
+fi

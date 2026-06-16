@@ -14,7 +14,7 @@ preset::load() {
         return 1
     fi
 
-    while IFS='=' read -r key value; do
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
         # Skip comments and blank lines
         [[ "$key" =~ ^[[:space:]]*# ]] && continue
         [[ -z "$key" ]] && continue

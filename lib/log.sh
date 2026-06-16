@@ -19,13 +19,13 @@ log::persist() {
 }
 
 log::info() {
-    echo "[$(date '+%H:%M:%S')] $*"
+    printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*"
 }
 
 log::warn() {
-    echo "[$(date '+%H:%M:%S')] [WARN] $*"
+    printf '[%s] [WARN] %s\n' "$(date '+%H:%M:%S')" "$*"
 }
 
 log::error() {
-    echo "[$(date '+%H:%M:%S')] [ERROR] $*" >&2
+    printf '[%s] [ERROR] %s\n' "$(date '+%H:%M:%S')" "$*" >&2
 }
