@@ -492,6 +492,8 @@ grub-mkconfig -o /boot/grub/grub.cfg
 # enable services
 systemctl enable NetworkManager
 systemctl enable sddm
+ln -sf /usr/lib/systemd/system/NetworkManager.service /etc/systemd/system/multi-user.target.wants/NetworkManager.service
+ln -sf /usr/lib/systemd/system/sddm.service /etc/systemd/system/display-manager.service
 
 # desktop environment
 pacman -S --noconfirm --needed plasma kde-applications
