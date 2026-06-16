@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# test_validate.sh — Parametrized-style valid/invalid cases per validate:: function
+# test_validate.bats — Parametrized-style valid/invalid cases per validate:: function
 
 load 'helpers'
 

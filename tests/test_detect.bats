@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# test_detect.sh — Mocked cpuinfo and /sys/firmware/efi
+# test_detect.bats — Mocked cpuinfo and /sys/firmware/efi
 
 load 'helpers'
 

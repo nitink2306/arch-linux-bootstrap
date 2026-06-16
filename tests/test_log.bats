@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# test_log.sh — Output prefix and format checks
+# test_log.bats — Output prefix and format checks
 
 load 'helpers'
 

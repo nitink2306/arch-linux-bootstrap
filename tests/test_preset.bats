@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# test_preset.sh — Safe parsing, unknown keys, no code execution
+# test_preset.bats — Safe parsing, unknown keys, no code execution
 
 load 'helpers'
 

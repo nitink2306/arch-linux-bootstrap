@@ -53,13 +53,10 @@ cat > /etc/hosts << HOSTS
 HOSTS
 
 # passwords — read from restricted file, then delete
+# Create user first so chpasswd can set both passwords
+useradd -mG wheel ${username}
 chpasswd < /tmp/arch-chroot-passwords
 rm -f /tmp/arch-chroot-passwords
-
-# create user
-useradd -mG wheel ${username}
-# re-apply user password after useradd
-printf '%s:%s\n' "${username}" "\$(sed -n '2p' /dev/stdin)" | chpasswd || true
 
 # sudo
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
