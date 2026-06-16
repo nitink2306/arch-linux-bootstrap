@@ -1,0 +1,5 @@
+# Never commit generated presets — they contain personal config
+presets/default.conf
+
+# Logs
+*.log
