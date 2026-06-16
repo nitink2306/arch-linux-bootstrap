@@ -31,6 +31,16 @@ setup() {
     rm -f "$tmp_file"
 }
 
+@test "detect::cpu_vendor returns empty and does not abort when vendor_id is absent (non-x86)" {
+    local tmp_file="/tmp/cpuinfo_nonx86"
+    printf 'processor\t: 0\nmodel name\t: AArch64 Processor\n' > "$tmp_file"
+
+    run detect::cpu_vendor "$tmp_file"
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+    rm -f "$tmp_file"
+}
+
 # --- detect::partition_names ---
 
 @test "detect::partition_names handles nvme disk" {
