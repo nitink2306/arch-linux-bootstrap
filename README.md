@@ -125,7 +125,7 @@ Because a stale preset can point at the wrong disk, preset runs add an extra saf
 
 Before asking you anything, the script silently detects two things:
 
-**Boot mode** — checks for `/sys/firmware/efi`. If it exists, you're on UEFI. If not, BIOS. This determines the partition table type (GPT vs MBR) and the GRUB install flags used later.
+**Boot mode** — checks for `/sys/firmware/efi`. If it exists, you're on UEFI. If not, BIOS. This determines the boot partition type (EFI System Partition vs BIOS boot partition) and the GRUB install flags used later. Both modes use a GPT partition table.
 
 **CPU vendor** — reads `/proc/cpuinfo` to detect Intel or AMD and installs the correct microcode package (`intel-ucode` or `amd-ucode`). Microcode is low-level CPU firmware that gets loaded at boot. It fixes hardware bugs and security vulnerabilities that exist in the CPU itself. On a VM this matters less, on bare metal it is important.
 
@@ -169,13 +169,13 @@ Before input collection the script also runs preflight checks: it must be root, 
 /dev/sda2 — rest    Linux filesystem (btrfs)
 ```
 
-**BIOS layout (MBR)**
+**BIOS layout (GPT)**
 ```
-/dev/sda1 — 1MB     BIOS boot partition (no filesystem, just a flag)
+/dev/sda1 — 1MB     BIOS boot partition (no filesystem, just the bios_grub flag)
 /dev/sda2 — rest    Linux filesystem (btrfs)
 ```
 
-The BIOS boot partition is where GRUB embeds itself on MBR disks. It has no filesystem — it's raw space GRUB writes directly into.
+The BIOS boot partition is where GRUB embeds itself when booting a GPT disk on BIOS firmware (the `bios_grub` flag is GPT-only). It has no filesystem — it's raw space GRUB writes directly into.
 
 **NVMe naming** — NVMe drives use a different partition naming convention (`/dev/nvme0n1p1` instead of `/dev/sda1`). The script detects this automatically from the disk path and adjusts accordingly.
 
