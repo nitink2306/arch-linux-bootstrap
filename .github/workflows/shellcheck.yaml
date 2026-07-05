@@ -1,9 +1,8 @@
 name: ShellCheck
 
+# pull_request has no base-branch filter so stacked PRs also get checks
 on:
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
