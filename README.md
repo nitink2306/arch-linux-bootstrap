@@ -1,4 +1,4 @@
-# arch-install
+# arch-linux-bootstrap
 
 A single script that takes you from a blank disk to a fully working Arch Linux system with KDE Plasma in under 10 minutes. No prior Arch experience required.
 
@@ -31,15 +31,19 @@ There are two ways to get the script onto your live ISO environment. Pick whiche
 
 ### Option 1 — From GitHub (recommended for most users)
 
-Once the repo is available on GitHub:
+The installer is split into modules under `lib/`, so downloading `arch-install.sh` alone is not enough. The bootstrap script clones the full repo and hands off to the installer:
 
 ```bash
-curl -O https://raw.githubusercontent.com/<username>/arch-install/main/arch-install.sh
-chmod +x arch-install.sh
-bash arch-install.sh
+curl -sL https://raw.githubusercontent.com/nitink2306/arch-linux-bootstrap/main/bootstrap.sh | bash
 ```
 
-Replace `<username>` with the actual GitHub username. This is the cleanest approach for anyone who just wants to run the installer without any local setup.
+To pin a specific release tag or branch instead of `main`:
+
+```bash
+curl -sL https://raw.githubusercontent.com/nitink2306/arch-linux-bootstrap/main/bootstrap.sh | ARCH_BOOTSTRAP_REF=v0.1.0 bash
+```
+
+As with any `curl | bash` pipeline, read the script first if you have any doubt — it is short by design.
 
 ### Option 2 — From a local Docker server (recommended for development and testing)
 
@@ -88,6 +92,31 @@ bash arch-install.sh
 
 The script will prompt you for everything it needs before touching your disk.
 
+### Flags
+
+```
+arch-install.sh [--preset FILE] [--dry-run] [--help]
+```
+
+- `--preset FILE` — pre-fill answers from a preset file (see below). Passwords are never stored in presets and are always prompted.
+- `--dry-run` — walk through detection, input collection, and validation, then print what a real run would do without touching the disk. Note: dry-run also skips the preflight checks (root, live-ISO tools, network), so a clean dry run does not guarantee a real run will start.
+- `--help` — print usage.
+
+### Preset files
+
+A preset is a plain `KEY=value` file (see `presets/default.conf.example`). Only these keys are read; anything else is ignored, and values are never executed as code:
+
+```
+DISK="/dev/sda"
+HOSTNAME="myarch"
+USERNAME="me"
+TIMEZONE="America/Chicago"
+LOCALE="en_US.UTF-8"
+REFLECTOR_COUNTRY="United States"
+```
+
+Because a stale preset can point at the wrong disk, preset runs add an extra safety step: you must type the disk path back before the wipe is allowed to proceed. After a successful install, the preset used is copied to `~/arch-bootstrap-preset.conf` on the new system so the install can be reproduced.
+
 ---
 
 ## What the script does
@@ -112,7 +141,7 @@ The script collects everything it needs upfront so there are no surprises mid-in
 
 **Username** — your personal user account. Validated for Linux username rules: must start with a lowercase letter, lowercase letters/numbers/underscores/hyphens only, max 32 characters.
 
-**Root password** — the password for the `root` superuser account. Prompted separately from your user password by design. Not having a root password or sharing it with your user account is a security risk. Cannot be empty. Must be confirmed by typing twice.
+**Root password** — the password for the `root` superuser account. Prompted separately from your user password by design. Not having a root password or sharing it with your user account is a security risk. Must be at least 8 characters, cannot contain a colon (`:` is the field separator of the `chpasswd` mechanism used to set it), and must be confirmed by typing twice.
 
 **User password** — the password for your personal account. Same rules, separate prompt. We don't assume these should be the same.
 
@@ -124,7 +153,9 @@ The script collects everything it needs upfront so there are no surprises mid-in
 
 ### 3. Summary and confirmation
 
-Before anything is written to disk, the script prints a full summary of every collected value and detected setting. You get one `y/n` prompt. Typing anything other than `y` aborts cleanly with no changes made.
+Before anything is written to disk, the script prints a full summary of every collected value and detected setting. You get one `y/n` prompt. Typing anything other than `y` aborts cleanly with no changes made. When the disk came from a preset file you must additionally type the disk path back, matching the rigor of the interactive double-confirmation.
+
+Before input collection the script also runs preflight checks: it must be root, the live-ISO tools (`pacstrap`, `arch-chroot`, `sgdisk`, ...) must be present, the network must be reachable, and the selected disk must be at least 20GiB with nothing mounted on it. If anything fails mid-install, the error handler unmounts `/mnt` so the installer can simply be re-run.
 
 ---
 
@@ -285,7 +316,11 @@ The script then unmounts all filesystems cleanly with `umount -R /mnt` before of
 
 These are deliberate omissions — things that depend on your preferences, workflow, or hardware.
 
-**AUR helper** — the Arch User Repository contains community-maintained packages not in the official repos. To use it you need a helper like `yay`. Install it after first boot as your normal user:
+**AUR helper** — the Arch User Repository contains community-maintained packages not in the official repos. To use it you need a helper like `yay`. After first boot, run the bundled helper as your normal user:
+```bash
+bash setup.sh
+```
+Or do it manually:
 ```bash
 git clone https://aur.archlinux.org/yay.git
 cd yay && makepkg -si
@@ -367,6 +402,20 @@ Clock might be out of sync. Run `timedatectl set-ntp true` and wait a few second
 
 ---
 
+## Scope
+
+x86-64 only (BIOS or UEFI). CPU microcode is auto-detected for Intel and AMD; other architectures are not supported.
+
+---
+
 ## Contributing
 
 Found a bug or have a suggestion? Open an issue or PR. If you're adding support for a new feature, follow the existing pattern — prompt for anything variable, auto-detect anything deterministic, never assume.
+
+Tests run with [bats](https://github.com/bats-core/bats-core): `bats tests/`. Lint with `shellcheck --severity=warning $(git ls-files '*.sh')`. Both run in CI on every PR, along with a loop-device integration test of the disk pipeline.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

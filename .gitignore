@@ -3,3 +3,13 @@ presets/default.conf
 
 # Logs
 *.log
+
+# OS cruft
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
