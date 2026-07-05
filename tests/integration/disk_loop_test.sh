@@ -61,11 +61,11 @@ run_mode() {
     [[ -b "$part1" ]] || fail "$part1 was not created"
     [[ -b "$part2" ]] || fail "$part2 was not created"
 
+    # GPT in both modes; BIOS uses a bios_grub partition instead of an ESP
+    parted -s "$LOOP" print | grep -q 'gpt' || fail "expected GPT label"
     if [[ "$mode" == "uefi" ]]; then
-        parted -s "$LOOP" print | grep -q 'gpt' || fail "expected GPT label"
         parted -s "$LOOP" print | grep -qi 'esp' || fail "expected ESP flag"
     else
-        parted -s "$LOOP" print | grep -q 'msdos' || fail "expected MBR label"
         parted -s "$LOOP" print | grep -q 'bios_grub' || fail "expected bios_grub flag"
     fi
 

@@ -39,13 +39,14 @@ setup() {
     grep -q 'mkpart primary btrfs 513MiB 100%' "$STUB_LOG"
 }
 
-@test "disk::partition creates MBR layout with bios_grub for bios" {
+@test "disk::partition creates GPT layout with bios_grub for bios" {
+    # GPT for BIOS too: bios_grub is a GPT-only flag (parted rejects it on msdos)
     run disk::partition /dev/sda bios
     [ "$status" -eq 0 ]
-    grep -q 'parted -s /dev/sda mklabel msdos' "$STUB_LOG"
+    grep -q 'parted -s /dev/sda mklabel gpt' "$STUB_LOG"
     grep -q 'set 1 bios_grub on' "$STUB_LOG"
     grep -q 'mkpart primary btrfs 2MiB 100%' "$STUB_LOG"
-    run grep -q 'gpt' "$STUB_LOG"
+    run grep -q 'esp' "$STUB_LOG"
     [ "$status" -ne 0 ]
 }
 
