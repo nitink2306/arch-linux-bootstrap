@@ -14,6 +14,7 @@ LOCALE_ARR=(
     "sv_SE.UTF-8" "tr_TR.UTF-8"
 )
 DEFAULT_LOCALE="en_US.UTF-8"
+DISK_FROM_PRESET=false
 
 ui::collect_inputs() {
     ui::_select_disk
@@ -41,6 +42,14 @@ ui::confirm_summary() {
     echo ""
     echo "WARNING: $DISK will be wiped. This cannot be undone."
     echo ""
+    if [[ "$DISK_FROM_PRESET" == "true" && "${DRY_RUN:-false}" == "false" ]]; then
+        read -rp "Disk came from a preset — type its path ($DISK) to confirm the wipe: " DISK_CONFIRM
+        if [[ "$DISK_CONFIRM" != "$DISK" ]]; then
+            log::info "Disk confirmation did not match. Aborting."
+            echo "Aborted."
+            exit 0
+        fi
+    fi
     read -rp "Proceed with installation? (y/n): " CONFIRM
     if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
         log::info "Aborted by user."
@@ -66,10 +75,63 @@ ui::prompt_reboot() {
 
 # --- Private helpers ---
 
+# Paginated numeric menu over a list of items.
+# Usage: ui::_select_paginated OUT_VAR DEFAULT ITEM...
+# Shows PAGE_SIZE items at a time; ENTER pages forward and wraps around.
+# If DEFAULT is non-empty, ENTER on the last page selects it instead of wrapping.
+# Item numbers are global (1..total), so a number works from any page.
+ui::_select_paginated() {
+    local __outvar="$1" default="$2"
+    shift 2
+    local items=("$@")
+    local total=${#items[@]}
+    local start=0 end i input
+
+    while true; do
+        end=$((start + PAGE_SIZE))
+        (( end > total )) && end=$total
+
+        for (( i=start; i<end; i++ )); do
+            echo "  $((i + 1))) ${items[$i]}"
+        done
+        echo ""
+
+        if (( end < total )); then
+            read -rp "Enter number to select or press ENTER for more: " input
+        elif [[ -n "$default" ]]; then
+            read -rp "Enter number to select or press ENTER for default [$default]: " input
+        else
+            read -rp "Enter number to select or press ENTER to start over: " input
+        fi
+
+        if [[ -z "$input" ]]; then
+            if (( end >= total )) && [[ -n "$default" ]]; then
+                printf -v "$__outvar" '%s' "$default"
+                echo ""
+                return 0
+            fi
+            start=$end
+            (( start >= total )) && start=0
+            echo ""
+            continue
+        fi
+
+        if [[ "$input" =~ ^[0-9]+$ ]] && (( input >= 1 && input <= total )); then
+            printf -v "$__outvar" '%s' "${items[$((input - 1))]}"
+            echo ""
+            return 0
+        fi
+
+        echo "Invalid selection. Try again."
+        echo ""
+    done
+}
+
 ui::_select_disk() {
     if [[ -n "${DISK:-}" ]]; then
         if validate::block_device "$DISK"; then
             log::info "Disk loaded from preset: $DISK"
+            DISK_FROM_PRESET=true
             return
         else
             log::warn "Preset DISK '$DISK' is not a valid block device; falling back to prompt."
@@ -210,84 +272,18 @@ ui::_select_timezone() {
     echo ""
 
     mapfile -t REGIONS < <(find /usr/share/zoneinfo/ -mindepth 1 -maxdepth 1 -type d ! -name 'posix' ! -name 'right' ! -name '*.*' -printf '%f\n' | sort)
-    local total=${#REGIONS[@]}
-    local start=0
-
-    while true; do
-        local end=$((start + PAGE_SIZE))
-        (( end > total )) && end=$total
-
-        for (( i=start; i<end; i++ )); do
-            echo "  $((i + 1))) ${REGIONS[$i]}"
-        done
-
-        echo ""
-        if (( end < total )); then
-            read -rp "Enter number to select or press ENTER for more: " REGION_INPUT
-        else
-            start=0
-            read -rp "Enter number to select or press ENTER to start over: " REGION_INPUT
-        fi
-
-        if [[ -z "$REGION_INPUT" ]]; then
-            start=$end
-            (( start >= total )) && start=0
-            echo ""
-            continue
-        fi
-
-        if [[ "$REGION_INPUT" =~ ^[0-9]+$ ]] && (( REGION_INPUT >= 1 && REGION_INPUT <= total )); then
-            local region="${REGIONS[$((REGION_INPUT - 1))]}"
-            log::info "Region set to $region"
-            echo ""
-            break
-        else
-            echo "Invalid selection. Try again."
-            echo ""
-        fi
-    done
+    local region
+    ui::_select_paginated region "" "${REGIONS[@]}"
+    log::info "Region set to $region"
 
     echo "Select timezone city:"
     echo ""
 
     mapfile -t CITIES < <(find /usr/share/zoneinfo/"$region"/ -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
-    total=${#CITIES[@]}
-    start=0
-
-    while true; do
-        local end=$((start + PAGE_SIZE))
-        (( end > total )) && end=$total
-
-        for (( i=start; i<end; i++ )); do
-            echo "  $((i + 1))) ${CITIES[$i]}"
-        done
-
-        echo ""
-        if (( end < total )); then
-            read -rp "Enter number to select or press ENTER for more: " CITY_INPUT
-        else
-            start=0
-            read -rp "Enter number to select or press ENTER to start over: " CITY_INPUT
-        fi
-
-        if [[ -z "$CITY_INPUT" ]]; then
-            start=$end
-            (( start >= total )) && start=0
-            echo ""
-            continue
-        fi
-
-        if [[ "$CITY_INPUT" =~ ^[0-9]+$ ]] && (( CITY_INPUT >= 1 && CITY_INPUT <= total )); then
-            local city="${CITIES[$((CITY_INPUT - 1))]}"
-            TIMEZONE="$region/$city"
-            log::info "Timezone set to $TIMEZONE"
-            echo ""
-            break
-        else
-            echo "Invalid selection. Try again."
-            echo ""
-        fi
-    done
+    local city
+    ui::_select_paginated city "" "${CITIES[@]}"
+    TIMEZONE="$region/$city"
+    log::info "Timezone set to $TIMEZONE"
 }
 
 ui::_select_locale() {
@@ -309,45 +305,9 @@ ui::_select_locale() {
         fi
     fi
 
-    local total=${#LOCALE_ARR[@]}
-    local start=0
-
     echo "Available locales (default: $DEFAULT_LOCALE):"
     echo ""
 
-    while true; do
-        local end=$((start + PAGE_SIZE))
-        (( end > total )) && end=$total
-
-        for (( i=start; i<end; i++ )); do
-            echo "  $((i + 1))) ${LOCALE_ARR[$i]}"
-        done
-
-        echo ""
-        if (( end < total )); then
-            read -rp "Enter number to select, press ENTER for more, or press ENTER at end for default [$DEFAULT_LOCALE]: " LOCALE_INPUT
-        else
-            start=0
-            read -rp "Enter number to select, press ENTER for default [$DEFAULT_LOCALE], or press ENTER to start over: " LOCALE_INPUT
-        fi
-
-        if [[ -z "$LOCALE_INPUT" ]] && (( end >= total )); then
-            LOCALE="$DEFAULT_LOCALE"
-            log::info "Locale set to $LOCALE"
-            echo ""
-            break
-        elif [[ -z "$LOCALE_INPUT" ]]; then
-            start=$end
-            echo ""
-            continue
-        elif [[ "$LOCALE_INPUT" =~ ^[0-9]+$ ]] && (( LOCALE_INPUT >= 1 && LOCALE_INPUT <= total )); then
-            LOCALE="${LOCALE_ARR[$((LOCALE_INPUT - 1))]}"
-            log::info "Locale set to $LOCALE"
-            echo ""
-            break
-        else
-            echo "Invalid selection. Try again."
-            echo ""
-        fi
-    done
+    ui::_select_paginated LOCALE "$DEFAULT_LOCALE" "${LOCALE_ARR[@]}"
+    log::info "Locale set to $LOCALE"
 }
