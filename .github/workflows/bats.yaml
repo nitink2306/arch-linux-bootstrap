@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   test:
@@ -22,7 +23,26 @@ jobs:
         run: pacman --noconfirm -Syu --needed git bats shellcheck
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Run BATS tests
         run: bats tests/
+
+  integration:
+    name: Disk pipeline on a loop device
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: archlinux/archlinux:latest
+      options: --privileged
+
+    steps:
+      - name: Install dependencies
+        run: pacman --noconfirm -Syu --needed git parted gptfdisk btrfs-progs dosfstools util-linux
+
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Run loop-device integration test
+        run: bash tests/integration/disk_loop_test.sh

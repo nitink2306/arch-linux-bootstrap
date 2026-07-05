@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   shellcheck:
@@ -17,18 +18,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
+      # git ls-files keeps the list in sync as scripts are added or moved
       - name: Syntax check all scripts
         run: |
-          for f in arch-install.sh bootstrap.sh setup.sh lib/*.sh; do
+          git ls-files '*.sh' | while read -r f; do
             echo "Checking syntax: $f"
             bash -n "$f"
           done
 
       - name: ShellCheck all scripts
         run: |
-          shellcheck --severity=warning arch-install.sh bootstrap.sh setup.sh lib/*.sh
+          git ls-files '*.sh' 'tests/*.bash' | xargs shellcheck --shell=bash --severity=warning

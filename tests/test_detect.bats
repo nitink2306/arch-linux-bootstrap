@@ -67,22 +67,24 @@ setup() {
     [ "$output" = "/dev/vda1 /dev/vda2" ]
 }
 
-# --- detect::boot_mode ---
+@test "detect::partition_names handles loop device" {
+    run detect::partition_names "/dev/loop0"
+    [ "$status" -eq 0 ]
+    [ "$output" = "/dev/loop0p1 /dev/loop0p2" ]
+}
 
-@test "detect::boot_mode returns uefi when /sys/firmware/efi exists" {
-    if [ ! -d /sys/firmware/efi ]; then
-        skip "Not running on UEFI system"
-    fi
-    run detect::boot_mode
+# --- detect::boot_mode ---
+# The efi dir is injectable so both paths run deterministically everywhere.
+
+@test "detect::boot_mode returns uefi when the efi dir exists" {
+    mkdir -p "$BATS_TEST_TMPDIR/efi"
+    run detect::boot_mode "$BATS_TEST_TMPDIR/efi"
     [ "$status" -eq 0 ]
     [ "$output" = "uefi" ]
 }
 
-@test "detect::boot_mode returns bios when /sys/firmware/efi missing" {
-    if [ -d /sys/firmware/efi ]; then
-        skip "Running on UEFI system"
-    fi
-    run detect::boot_mode
+@test "detect::boot_mode returns bios when the efi dir is missing" {
+    run detect::boot_mode "$BATS_TEST_TMPDIR/no-efi"
     [ "$status" -eq 0 ]
     [ "$output" = "bios" ]
 }
