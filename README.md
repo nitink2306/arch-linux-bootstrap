@@ -31,13 +31,19 @@ The installer is split into a main script (`arch-install.sh`) and a set of helpe
 
 ### Option 1 — One-line bootstrap (recommended for most users)
 
-`bootstrap.sh` is a small entrypoint that clones this repo to `/tmp/arch-bootstrap` and hands off to the installer. Run this from the live ISO:
+The installer is split into modules under `lib/`, so downloading `arch-install.sh` alone is not enough. The bootstrap script clones the full repo and hands off to the installer:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/nitink2306/arch-linux-bootstrap/main/bootstrap.sh | bash
 ```
 
-If you run it again (say, after a failed attempt), it'll pull the latest changes into the existing clone instead of re-cloning from scratch.
+To pin a specific release tag or branch instead of `main`:
+
+```bash
+curl -sL https://raw.githubusercontent.com/nitink2306/arch-linux-bootstrap/main/bootstrap.sh | ARCH_BOOTSTRAP_REF=v0.1.0 bash
+```
+
+As with any `curl | bash` pipeline, read the script first if you have any doubt — it is short by design.
 
 ### Option 2 — From a local Docker server (recommended for development and testing)
 
@@ -92,6 +98,31 @@ bash arch-install.sh --help                          # show usage
 
 **`--dry-run`** — runs auto-detection, collects your inputs, and prints the confirmation summary, but skips every step that would actually touch the disk (partitioning, formatting, pacstrap, chroot). Useful for checking that your inputs validate correctly before committing to a real install.
 
+### Flags
+
+```
+arch-install.sh [--preset FILE] [--dry-run] [--help]
+```
+
+- `--preset FILE` — pre-fill answers from a preset file (see below). Passwords are never stored in presets and are always prompted.
+- `--dry-run` — walk through detection, input collection, and validation, then print what a real run would do without touching the disk. Note: dry-run also skips the preflight checks (root, live-ISO tools, network), so a clean dry run does not guarantee a real run will start.
+- `--help` — print usage.
+
+### Preset files
+
+A preset is a plain `KEY=value` file (see `presets/default.conf.example`). Only these keys are read; anything else is ignored, and values are never executed as code:
+
+```
+DISK="/dev/sda"
+HOSTNAME="myarch"
+USERNAME="me"
+TIMEZONE="America/Chicago"
+LOCALE="en_US.UTF-8"
+REFLECTOR_COUNTRY="United States"
+```
+
+Because a stale preset can point at the wrong disk, preset runs add an extra safety step: you must type the disk path back before the wipe is allowed to proceed. After a successful install, the preset used is copied to `~/arch-bootstrap-preset.conf` on the new system so the install can be reproduced.
+
 ---
 
 ## What the script does
@@ -100,7 +131,7 @@ bash arch-install.sh --help                          # show usage
 
 Before asking you anything, the script silently detects two things:
 
-**Boot mode** — checks for `/sys/firmware/efi`. If it exists, you're on UEFI. If not, BIOS. This determines the partition table type (GPT vs MBR) and the GRUB install flags used later.
+**Boot mode** — checks for `/sys/firmware/efi`. If it exists, you're on UEFI. If not, BIOS. This determines the boot partition type (EFI System Partition vs BIOS boot partition) and the GRUB install flags used later. Both modes use a GPT partition table.
 
 **CPU vendor** — reads `/proc/cpuinfo` to detect Intel or AMD and installs the correct microcode package (`intel-ucode` or `amd-ucode`). Microcode is low-level CPU firmware that gets loaded at boot. It fixes hardware bugs and security vulnerabilities that exist in the CPU itself. On a VM this matters less, on bare metal it is important. If the vendor can't be determined (some VMs and unusual CPUs don't expose a `vendor_id` line), the script just skips microcode installation rather than failing.
 
@@ -116,7 +147,7 @@ The script collects everything it needs upfront so there are no surprises mid-in
 
 **Username** — your personal user account. Validated for Linux username rules: must start with a lowercase letter, lowercase letters/numbers/underscores/hyphens only, max 32 characters.
 
-**Root password** — the password for the `root` superuser account. Prompted separately from your user password by design. Not having a root password or sharing it with your user account is a security risk. Must be at least 8 characters and cannot contain a colon (`:`), since passwords are passed through `chpasswd` in `user:password` format internally. Must be confirmed by typing twice.
+**Root password** — the password for the `root` superuser account. Prompted separately from your user password by design. Not having a root password or sharing it with your user account is a security risk. Must be at least 8 characters, cannot contain a colon (`:` is the field separator of the `chpasswd` mechanism used to set it), and must be confirmed by typing twice.
 
 **User password** — the password for your personal account. Same rules, separate prompt. We don't assume these should be the same.
 
@@ -128,7 +159,9 @@ The script collects everything it needs upfront so there are no surprises mid-in
 
 ### 3. Summary and confirmation
 
-Before anything is written to disk, the script prints a full summary of every collected value and detected setting. You get one `y/n` prompt. Typing anything other than `y` aborts cleanly with no changes made.
+Before anything is written to disk, the script prints a full summary of every collected value and detected setting. You get one `y/n` prompt. Typing anything other than `y` aborts cleanly with no changes made. When the disk came from a preset file you must additionally type the disk path back, matching the rigor of the interactive double-confirmation.
+
+Before input collection the script also runs preflight checks: it must be root, the live-ISO tools (`pacstrap`, `arch-chroot`, `sgdisk`, ...) must be present, the network must be reachable, and the selected disk must be at least 20GiB with nothing mounted on it. If anything fails mid-install, the error handler unmounts `/mnt` so the installer can simply be re-run.
 
 ---
 
@@ -142,13 +175,13 @@ Before anything is written to disk, the script prints a full summary of every co
 /dev/sda2 — rest    Linux filesystem (btrfs)
 ```
 
-**BIOS layout (MBR)**
+**BIOS layout (GPT)**
 ```
-/dev/sda1 — 1MB     BIOS boot partition (no filesystem, just a flag)
+/dev/sda1 — 1MB     BIOS boot partition (no filesystem, just the bios_grub flag)
 /dev/sda2 — rest    Linux filesystem (btrfs)
 ```
 
-The BIOS boot partition is where GRUB embeds itself on MBR disks. It has no filesystem — it's raw space GRUB writes directly into.
+The BIOS boot partition is where GRUB embeds itself when booting a GPT disk on BIOS firmware (the `bios_grub` flag is GPT-only). It has no filesystem — it's raw space GRUB writes directly into.
 
 **NVMe naming** — NVMe and eMMC drives use a different partition naming convention (`/dev/nvme0n1p1` instead of `/dev/sda1`). The script detects this automatically from the disk path and adjusts accordingly.
 
@@ -321,7 +354,11 @@ Everything the script prints is also written to `/tmp/arch-install.log` on the l
 
 These are deliberate omissions — things that depend on your preferences, workflow, or hardware.
 
-**AUR helper** — the Arch User Repository contains community-maintained packages not in the official repos. To use it you need a helper like `yay`. Install it after first boot as your normal user:
+**AUR helper** — the Arch User Repository contains community-maintained packages not in the official repos. To use it you need a helper like `yay`. After first boot, run the bundled helper as your normal user:
+```bash
+bash setup.sh
+```
+Or do it manually:
 ```bash
 git clone https://aur.archlinux.org/yay.git
 cd yay && makepkg -si
@@ -419,6 +456,20 @@ Three GitHub Actions workflows run on every push: [shellcheck](.github/workflows
 
 ---
 
+## Scope
+
+x86-64 only (BIOS or UEFI). CPU microcode is auto-detected for Intel and AMD; other architectures are not supported.
+
+---
+
 ## Contributing
 
-Found a bug or have a suggestion? Open an issue or PR. If you're adding support for a new feature, follow the existing pattern — prompt for anything variable, auto-detect anything deterministic, never assume. Add a bats test alongside any new `lib/` function if it has logic worth covering.
+Found a bug or have a suggestion? Open an issue or PR. If you're adding support for a new feature, follow the existing pattern — prompt for anything variable, auto-detect anything deterministic, never assume.
+
+Tests run with [bats](https://github.com/bats-core/bats-core): `bats tests/`. Lint with `shellcheck --severity=warning $(git ls-files '*.sh')`. Both run in CI on every PR, along with a loop-device integration test of the disk pipeline.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

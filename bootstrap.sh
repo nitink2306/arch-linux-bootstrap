@@ -5,26 +5,22 @@ set -euo pipefail
 # Usage: curl -sL https://raw.githubusercontent.com/nitink2306/arch-linux-bootstrap/main/bootstrap.sh | bash
 #
 # Clones the full repo so that lib/ modules are available, then hands off to arch-install.sh.
+# Pin a release instead of main with: ARCH_BOOTSTRAP_REF=v0.1.0
 
 REPO_URL="https://github.com/nitink2306/arch-linux-bootstrap.git"
-CLONE_DIR="/tmp/arch-bootstrap"
+REF="${ARCH_BOOTSTRAP_REF:-main}"
 
 if ! command -v git &>/dev/null; then
     echo "Error: git is required but not installed. Install git and re-run." >&2
     exit 1
 fi
 
-if [ -d "$CLONE_DIR/.git" ]; then
-    echo "Updating arch-linux-bootstrap..."
-    git -C "$CLONE_DIR" pull --ff-only
-elif [ ! -d "$CLONE_DIR" ]; then
-    echo "Cloning arch-linux-bootstrap..."
-    git clone --depth=1 "$REPO_URL" "$CLONE_DIR"
-else
-    echo "Directory exists but is not a git repo; re-cloning..."
-    rm -rf "$CLONE_DIR"
-    git clone --depth=1 "$REPO_URL" "$CLONE_DIR"
-fi
+# Fresh private clone dir every run — never reuse a fixed world-writable /tmp
+# path where stale or pre-planted code could end up executed as root.
+CLONE_DIR="$(mktemp -d /tmp/arch-bootstrap.XXXXXX)"
+
+echo "Cloning arch-linux-bootstrap (${REF})..."
+git clone --depth=1 --branch "$REF" "$REPO_URL" "$CLONE_DIR"
 
 if [ -e /dev/tty ]; then
     exec bash "$CLONE_DIR/arch-install.sh" "$@" </dev/tty

@@ -117,6 +117,21 @@ setup() {
     [ "$status" -eq 1 ]
 }
 
+@test "validate::username rejects reserved name root" {
+    run validate::username "root"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::username rejects reserved name daemon" {
+    run validate::username "daemon"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::username rejects reserved name nobody" {
+    run validate::username "nobody"
+    [ "$status" -eq 1 ]
+}
+
 # --- validate::password ---
 
 @test "validate::password accepts 8 character password" {
@@ -151,5 +166,101 @@ setup() {
 
 @test "validate::password rejects password containing colon" {
     run validate::password "pass:word1"
+    [ "$status" -eq 1 ]
+}
+
+# --- validate::timezone ---
+
+@test "validate::timezone accepts UTC" {
+    [ -f /usr/share/zoneinfo/UTC ] || skip "zoneinfo not installed"
+    run validate::timezone "UTC"
+    [ "$status" -eq 0 ]
+}
+
+@test "validate::timezone accepts region/city" {
+    [ -f /usr/share/zoneinfo/America/Chicago ] || skip "zoneinfo not installed"
+    run validate::timezone "America/Chicago"
+    [ "$status" -eq 0 ]
+}
+
+@test "validate::timezone rejects unknown zone" {
+    run validate::timezone "Invalid/Zone"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::timezone rejects empty string" {
+    run validate::timezone ""
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::timezone rejects path traversal" {
+    run validate::timezone "../../../etc/passwd"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::timezone rejects absolute paths" {
+    run validate::timezone "/etc/passwd"
+    [ "$status" -eq 1 ]
+}
+
+# --- validate::block_device / validate::_disk_usable ---
+
+@test "validate::block_device rejects a regular file" {
+    local f="$BATS_TEST_TMPDIR/notablock"
+    touch "$f"
+    run validate::block_device "$f"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::block_device rejects a nonexistent path" {
+    run validate::block_device "/dev/definitely-not-here"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::block_device rejects empty string" {
+    run validate::block_device ""
+    [ "$status" -eq 1 ]
+}
+
+make_lsblk_stub() {
+    # lsblk stub: $1 = TYPE to report, $2 = MOUNTPOINTS to report
+    stub_setup
+    cat > "$STUB_DIR/lsblk" << EOF
+#!/bin/bash
+case "\$*" in
+    *TYPE*) echo "$1" ;;
+    *MOUNTPOINTS*) printf '%s\n' "$2" ;;
+esac
+EOF
+    chmod +x "$STUB_DIR/lsblk"
+}
+
+@test "validate::_disk_usable accepts an unmounted whole disk" {
+    make_lsblk_stub "disk" ""
+    run validate::_disk_usable "/dev/sda"
+    [ "$status" -eq 0 ]
+}
+
+@test "validate::_disk_usable accepts a loop device" {
+    make_lsblk_stub "loop" ""
+    run validate::_disk_usable "/dev/loop0"
+    [ "$status" -eq 0 ]
+}
+
+@test "validate::_disk_usable rejects a partition" {
+    make_lsblk_stub "part" ""
+    run validate::_disk_usable "/dev/sda1"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::_disk_usable rejects a disk with mounted partitions" {
+    make_lsblk_stub "disk" "/boot"
+    run validate::_disk_usable "/dev/sda"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate::_disk_usable rejects a disk with active swap" {
+    make_lsblk_stub "disk" "[SWAP]"
+    run validate::_disk_usable "/dev/sda"
     [ "$status" -eq 1 ]
 }
