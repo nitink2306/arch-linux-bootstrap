@@ -74,6 +74,40 @@ setup() {
     [ "$status" -eq 1 ]
 }
 
+@test "preset::load handles an empty file" {
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    unset DISK HOSTNAME USERNAME TIMEZONE LOCALE REFLECTOR_COUNTRY
+    run preset::load "$tmp_file"
+    [ "$status" -eq 0 ]
+    [ -z "${DISK:-}" ]
+    rm -f "$tmp_file"
+}
+
+@test "preset::load handles a comments-only file" {
+    local tmp_file
+    tmp_file="$(mktemp)"
+    printf '# just a comment\n\n   # indented comment\n' > "$tmp_file"
+
+    unset DISK HOSTNAME USERNAME TIMEZONE LOCALE REFLECTOR_COUNTRY
+    preset::load "$tmp_file"
+    [ -z "${DISK:-}" ]
+    [ -z "${HOSTNAME:-}" ]
+    rm -f "$tmp_file"
+}
+
+@test "preset::load handles a file without a trailing newline" {
+    local tmp_file
+    tmp_file="$(mktemp)"
+    printf 'HOSTNAME=no-newline-host' > "$tmp_file"
+
+    unset HOSTNAME
+    preset::load "$tmp_file"
+    [ "$HOSTNAME" = "no-newline-host" ]
+    rm -f "$tmp_file"
+}
+
 @test "preset::save produces double-quoted values" {
     DISK="/dev/nvme0n1"
     HOSTNAME="myhost"
@@ -91,8 +125,10 @@ setup() {
     grep -q 'HOSTNAME="myhost"' "$tmp_file"
     grep -q 'USERNAME="testuser"' "$tmp_file"
 
-    # No password should appear
-    ! grep -qi "password" "$tmp_file"
+    # No password values should appear (the header comment mentions the word,
+    # so check specifically for KEY=value password entries)
+    run grep -Ei '^[A-Z_]*PASSWORD' "$tmp_file"
+    [ "$status" -ne 0 ]
 
     rm -f "$tmp_file"
 }
