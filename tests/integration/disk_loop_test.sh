@@ -19,10 +19,16 @@ source "$REPO_ROOT/lib/disk.sh"
 IMG=""
 LOOP=""
 
+# if-statements, not `[[ ]] &&` lists: on the happy path LOOP/IMG are empty,
+# and a failing && list as the trap's last command becomes the script's exit code
 cleanup() {
     umount -R /mnt 2>/dev/null || true
-    [[ -n "$LOOP" ]] && losetup -d "$LOOP" 2>/dev/null || true
-    [[ -n "$IMG" ]] && rm -f "$IMG"
+    if [[ -n "$LOOP" ]]; then
+        losetup -d "$LOOP" 2>/dev/null || true
+    fi
+    if [[ -n "$IMG" ]]; then
+        rm -f "$IMG"
+    fi
 }
 trap cleanup EXIT
 
