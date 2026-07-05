@@ -4,7 +4,8 @@
 # lib/detect.sh — Hardware and environment detection
 
 detect::boot_mode() {
-    if [[ -d /sys/firmware/efi ]]; then
+    local efi_dir="${1:-/sys/firmware/efi}"
+    if [[ -d "$efi_dir" ]]; then
         echo "uefi"
     else
         echo "bios"
@@ -25,7 +26,7 @@ detect::cpu_vendor() {
 
 detect::partition_names() {
     local disk="${1:-}"
-    if [[ "$disk" == *"nvme"* || "$disk" == *"mmcblk"* ]]; then
+    if [[ "$disk" == *"nvme"* || "$disk" == *"mmcblk"* || "$disk" == *"loop"* ]]; then
         echo "${disk}p1 ${disk}p2"
     else
         echo "${disk}1 ${disk}2"

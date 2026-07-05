@@ -3,6 +3,14 @@
 
 # lib/disk.sh — Disk partitioning, formatting, and mounting
 
+# Unmount leftovers from a previous (failed) run so mounts below don't collide
+disk::ensure_unmounted() {
+    if mountpoint -q /mnt 2>/dev/null; then
+        log::warn "/mnt is already mounted (previous run?) — unmounting."
+        umount -R /mnt
+    fi
+}
+
 disk::partition() {
     local disk="${1:-}"
     local boot_mode="${2:-}"
@@ -21,9 +29,11 @@ disk::partition() {
             set 1 esp on \
             mkpart primary btrfs 513MiB 100%
     else
-        log::info "Creating MBR partition table (BIOS)..."
+        # GPT here too: bios_grub is a GPT-only flag (parted rejects it on
+        # msdos), and grub-install --target=i386-pc embeds into that partition
+        log::info "Creating GPT partition table (BIOS)..."
         parted -s "$disk" \
-            mklabel msdos \
+            mklabel gpt \
             mkpart primary 1MiB 2MiB \
             set 1 bios_grub on \
             mkpart primary btrfs 2MiB 100%
@@ -53,6 +63,7 @@ disk::create_subvolumes() {
 
     log::info "Creating btrfs subvolumes..."
 
+    disk::ensure_unmounted
     mount "$part2" /mnt
 
     btrfs subvolume create /mnt/@
@@ -72,6 +83,7 @@ disk::mount() {
 
     log::info "Mounting filesystems..."
 
+    disk::ensure_unmounted
     mount -o noatime,compress=zstd,subvol=@ "$part2" /mnt
 
     mkdir -p /mnt/{boot,home,snapshots,var/log}
@@ -89,7 +101,17 @@ disk::mount() {
 
 disk::unmount() {
     log::info "Unmounting filesystems..."
-    # Release the tee file handle to prevent "target is busy" error
-    exec > /dev/tty 2>&1 || true
-    umount -R /mnt
+    # Restore the original stdout/stderr so the tee handle on /mnt/var/log
+    # is released — otherwise umount fails with "target is busy"
+    log::restore_console
+    local _
+    for _ in 1 2 3; do
+        if umount -R /mnt 2>/dev/null; then
+            echo "Filesystems unmounted."
+            return 0
+        fi
+        sleep 1
+    done
+    echo "Warning: could not unmount /mnt. Run 'umount -R /mnt' manually before rebooting." >&2
+    return 1
 }
