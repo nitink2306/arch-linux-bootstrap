@@ -29,9 +29,11 @@ disk::partition() {
             set 1 esp on \
             mkpart primary btrfs 513MiB 100%
     else
-        log::info "Creating MBR partition table (BIOS)..."
+        # GPT here too: bios_grub is a GPT-only flag (parted rejects it on
+        # msdos), and grub-install --target=i386-pc embeds into that partition
+        log::info "Creating GPT partition table (BIOS)..."
         parted -s "$disk" \
-            mklabel msdos \
+            mklabel gpt \
             mkpart primary 1MiB 2MiB \
             set 1 bios_grub on \
             mkpart primary btrfs 2MiB 100%
