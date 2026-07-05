@@ -1,6 +1,6 @@
-# arch-install
+# arch-linux-bootstrap
 
-A single script that takes you from a blank disk to a fully working Arch Linux system with KDE Plasma in under 10 minutes. No prior Arch experience required.
+A script that takes you from a blank disk to a fully working Arch Linux system with KDE Plasma, in one guided run. You don't need to have installed Arch before — this README explains every step along the way.
 
 Built by going through the installation manually first, understanding every decision, then automating the parts that should never be manual.
 
@@ -8,11 +8,11 @@ Built by going through the installation manually first, understanding every deci
 
 ## What this is
 
-A bash script that handles the entire Arch Linux installation process non-interactively after an upfront configuration step. You answer questions once at the start, review a summary, confirm, and walk away. It works on both VMs and bare metal, UEFI and BIOS systems, Intel and AMD CPUs.
+A bash script that handles the entire Arch Linux installation process non-interactively after an upfront configuration step. You answer a handful of questions once at the start, review a summary, confirm, and walk away. It works on both VMs and bare metal, UEFI and BIOS systems, Intel and AMD CPUs.
 
 ## What this is not
 
-A GUI installer. A one-size-fits-all setup tool. A replacement for understanding what's happening under the hood. If something goes wrong, you need to know enough to debug it — this README exists to give you that understanding.
+A GUI installer, or a one-size-fits-all setup tool. It's also not a replacement for understanding what's happening under the hood — if something goes wrong partway through, you'll want to know enough to debug it. That's what this README is for. Read through it once before you run anything; none of it assumes you've installed Arch before.
 
 ---
 
@@ -27,23 +27,21 @@ A GUI installer. A one-size-fits-all setup tool. A replacement for understanding
 
 ## Getting the script
 
-There are two ways to get the script onto your live ISO environment. Pick whichever fits your situation.
+The installer is split into a main script (`arch-install.sh`) and a set of helper modules under `lib/`. The main script needs those modules to be present alongside it, so you can't just download `arch-install.sh` on its own — you need the whole repo. There are two ways to get it onto your live ISO environment.
 
-### Option 1 — From GitHub (recommended for most users)
+### Option 1 — One-line bootstrap (recommended for most users)
 
-Once the repo is available on GitHub:
+`bootstrap.sh` is a small entrypoint that clones this repo to `/tmp/arch-bootstrap` and hands off to the installer. Run this from the live ISO:
 
 ```bash
-curl -O https://raw.githubusercontent.com/<username>/arch-install/main/arch-install.sh
-chmod +x arch-install.sh
-bash arch-install.sh
+curl -sL https://raw.githubusercontent.com/nitink2306/arch-linux-bootstrap/main/bootstrap.sh | bash
 ```
 
-Replace `<username>` with the actual GitHub username. This is the cleanest approach for anyone who just wants to run the installer without any local setup.
+If you run it again (say, after a failed attempt), it'll pull the latest changes into the existing clone instead of re-cloning from scratch.
 
 ### Option 2 — From a local Docker server (recommended for development and testing)
 
-This approach is useful when you're actively iterating on the script and don't want to push to GitHub on every change. An nginx container on your host machine serves the scripts over HTTP. Your VM pulls directly from it over the local network.
+This approach is useful when you're actively iterating on the script and don't want to push to GitHub on every change. An nginx container on your host machine serves the repo over HTTP. Your VM pulls directly from it over the local network.
 
 **On your host machine:**
 
@@ -53,40 +51,46 @@ This approach is useful when you're actively iterating on the script and don't w
 4. Start the server:
 
 ```bash
-docker compose up -d
+docker compose -f docker/docker-compose.yml up -d
 ```
 
-Verify it's working by opening `http://localhost:8080` in a browser on your host. You should see a directory listing with the scripts.
+Verify it's working by opening `http://localhost:8080` in a browser on your host. You should see a directory listing of the repo.
 
 **On the live ISO (VM must be set to bridged networking):**
 
 ```bash
-curl http://<host-ip>:8080/arch-install.sh -O
-chmod +x arch-install.sh
-bash arch-install.sh
+curl http://<host-ip>:8080/bootstrap.sh -O
+chmod +x bootstrap.sh
+bash bootstrap.sh
 ```
 
 The key requirement is that your VM uses **bridged networking**, not NAT. Bridged mode puts the VM on the same network as your host so it can reach your host's IP directly. NAT isolates the VM behind a virtual router and the host IP won't be reachable.
 
-Any edits you make to the script on your host are served immediately — no container restart needed.
+Any edits you make to the scripts on your host are served immediately — no container restart needed.
 
 **Stop the server when done:**
 
 ```bash
-docker compose down
+docker compose -f docker/docker-compose.yml down
 ```
 
 ---
 
 ## Quickstart
 
-Boot the Arch live ISO, get the script using either method above, then:
+Boot the Arch live ISO, get the script using either method above, then follow the prompts. The script will ask you for everything it needs before touching your disk, and nothing is written until you confirm a final summary.
+
+### Optional flags
 
 ```bash
-bash arch-install.sh
+bash arch-install.sh --preset presets/default.conf   # skip prompts using saved answers
+bash arch-install.sh --dry-run                       # walk through prompts without touching the disk
+bash arch-install.sh --help                          # show usage
 ```
 
-The script will prompt you for everything it needs before touching your disk.
+**`--preset FILE`** — loads answers (disk, hostname, username, timezone, locale, mirror country) from a config file instead of prompting for them. Passwords are never stored in a preset and are always prompted for separately. See [Presets](#presets) below.
+
+**`--dry-run`** — runs auto-detection, collects your inputs, and prints the confirmation summary, but skips every step that would actually touch the disk (partitioning, formatting, pacstrap, chroot). Useful for checking that your inputs validate correctly before committing to a real install.
 
 ---
 
@@ -98,21 +102,21 @@ Before asking you anything, the script silently detects two things:
 
 **Boot mode** — checks for `/sys/firmware/efi`. If it exists, you're on UEFI. If not, BIOS. This determines the partition table type (GPT vs MBR) and the GRUB install flags used later.
 
-**CPU vendor** — reads `/proc/cpuinfo` to detect Intel or AMD and installs the correct microcode package (`intel-ucode` or `amd-ucode`). Microcode is low-level CPU firmware that gets loaded at boot. It fixes hardware bugs and security vulnerabilities that exist in the CPU itself. On a VM this matters less, on bare metal it is important.
+**CPU vendor** — reads `/proc/cpuinfo` to detect Intel or AMD and installs the correct microcode package (`intel-ucode` or `amd-ucode`). Microcode is low-level CPU firmware that gets loaded at boot. It fixes hardware bugs and security vulnerabilities that exist in the CPU itself. On a VM this matters less, on bare metal it is important. If the vendor can't be determined (some VMs and unusual CPUs don't expose a `vendor_id` line), the script just skips microcode installation rather than failing.
 
 ---
 
 ### 2. Input collection
 
-The script collects everything it needs upfront so there are no surprises mid-install. Every input is validated before being accepted.
+The script collects everything it needs upfront so there are no surprises mid-install. Every input is validated before being accepted. If you're using a preset (see below), any value it provides is validated the same way and only falls back to a prompt if it's missing or invalid.
 
 **Disk selection** — runs `lsblk` so you can see available disks, then asks you to type the target disk path (e.g. `/dev/sda`). You have to type it twice to confirm. A block device check ensures what you typed actually exists on the system. This is the most dangerous step — the selected disk will be completely wiped.
 
-**Hostname** — the name your machine identifies itself as on the network. Validated for RFC-compliant characters: lowercase and uppercase letters, numbers, hyphens. Cannot start or end with a hyphen. Max 63 characters.
+**Hostname** — the name your machine identifies itself as on the network. Validated for RFC-compliant characters: letters (either case), numbers, hyphens. Cannot start or end with a hyphen. Max 63 characters.
 
 **Username** — your personal user account. Validated for Linux username rules: must start with a lowercase letter, lowercase letters/numbers/underscores/hyphens only, max 32 characters.
 
-**Root password** — the password for the `root` superuser account. Prompted separately from your user password by design. Not having a root password or sharing it with your user account is a security risk. Cannot be empty. Must be confirmed by typing twice.
+**Root password** — the password for the `root` superuser account. Prompted separately from your user password by design. Not having a root password or sharing it with your user account is a security risk. Must be at least 8 characters and cannot contain a colon (`:`), since passwords are passed through `chpasswd` in `user:password` format internally. Must be confirmed by typing twice.
 
 **User password** — the password for your personal account. Same rules, separate prompt. We don't assume these should be the same.
 
@@ -146,7 +150,7 @@ Before anything is written to disk, the script prints a full summary of every co
 
 The BIOS boot partition is where GRUB embeds itself on MBR disks. It has no filesystem — it's raw space GRUB writes directly into.
 
-**NVMe naming** — NVMe drives use a different partition naming convention (`/dev/nvme0n1p1` instead of `/dev/sda1`). The script detects this automatically from the disk path and adjusts accordingly.
+**NVMe naming** — NVMe and eMMC drives use a different partition naming convention (`/dev/nvme0n1p1` instead of `/dev/sda1`). The script detects this automatically from the disk path and adjusts accordingly.
 
 ---
 
@@ -183,7 +187,13 @@ This step has to happen after all mounts are in place. Whatever is mounted at th
 
 ---
 
-### 7. Base system installation
+### 7. Mirror ranking
+
+Before installing anything, the script runs [`reflector`](https://wiki.archlinux.org/title/Reflector) (if it's available on the live ISO) to rank Arch's package mirrors by actual download speed, filtered to a country of your choosing. By default this is `United States` — you can override it by setting `REFLECTOR_COUNTRY` in a preset file. The ranked list is written to `/etc/pacman.d/mirrorlist` and used for the rest of the install. If `reflector` isn't available, the script quietly falls back to whatever mirrorlist the live ISO already has — it's a speed optimization, not a hard requirement.
+
+---
+
+### 8. Base system installation
 
 `pacstrap` is an Arch-specific tool that installs packages into a target directory rather than the running system. Everything here lands on your actual drive at `/mnt`.
 
@@ -200,13 +210,15 @@ This step has to happen after all mounts are in place. Whatever is mounted at th
 | `git` | Version control — also needed to clone AUR packages |
 | `intel-ucode` or `amd-ucode` | CPU microcode (whichever applies) |
 
+Everything else — GRUB, NetworkManager, SDDM, zram, KDE Plasma — is installed later, once we're inside the new system (see below). `pacstrap` only lays down the minimal bootable base.
+
 ---
 
-### 8. System configuration (inside chroot)
+### 9. System configuration (inside chroot)
 
 `arch-chroot` switches the root from the live USB into your installed system at `/mnt`. From this point on, every command runs as if you're inside the real system. This is how changes like setting passwords and installing the bootloader actually stick.
 
-Everything in this phase runs through a heredoc — a block of commands passed into arch-chroot in one go, which is how scripts automate what would otherwise be an interactive session.
+The script writes a standalone setup script into `/mnt/tmp/`, passes your answers in as environment variables (never interpolated directly into shell code, to avoid injection issues), and executes it with `arch-chroot`. It's cleaned up afterwards.
 
 **Timezone** — creates a symlink from `/etc/localtime` to the correct zone file in `/usr/share/zoneinfo/`. Then `hwclock --systohc` syncs the hardware clock (which keeps running when the machine is off) to the system clock.
 
@@ -214,7 +226,7 @@ Everything in this phase runs through a heredoc — a block of commands passed i
 
 **Hostname and hosts file** — writes your hostname to `/etc/hostname` and creates `/etc/hosts` with the standard localhost entries plus a `127.0.1.1` entry mapping back to your hostname. This prevents various tools from hanging while trying to resolve the local machine name.
 
-**Passwords** — set non-interactively using `chpasswd`, which reads `username:password` from stdin. This is the standard way scripts set passwords without an interactive prompt.
+**Passwords** — written to a temporary file with `600` permissions, then set non-interactively using `chpasswd`, which reads `username:password` from stdin. The temp file is deleted immediately after. This is the standard way scripts set passwords without an interactive prompt.
 
 **Sudo access** — your user is added to the `wheel` group during creation. But being in wheel means nothing until the sudoers file enables it. We uncomment `%wheel ALL=(ALL:ALL) ALL` in `/etc/sudoers` using `sed` — the `%` means group, so every wheel member gets full sudo access.
 
@@ -233,7 +245,7 @@ Everything in this phase runs through a heredoc — a block of commands passed i
 
 ---
 
-### 9. Bootloader
+### 10. Bootloader
 
 **Why GRUB** — GRUB is the most widely supported bootloader and the community standard for Arch. Alternatives like systemd-boot exist but GRUB handles both UEFI and BIOS in one tool, which fits our goal of a single script that works everywhere.
 
@@ -253,7 +265,7 @@ Embeds GRUB directly into the 1MB BIOS boot partition we created earlier.
 
 ---
 
-### 10. Desktop environment
+### 11. Desktop environment
 
 We chose **KDE Plasma** over other desktop environments for a few reasons:
 
@@ -270,14 +282,38 @@ We chose **KDE Plasma** over other desktop environments for a few reasons:
 
 ---
 
-### 11. Services and reboot
+### 12. Services and reboot
 
-`systemctl enable` tells systemd to start a service automatically on every boot. We enable two:
+Inside the chroot, the script enables `NetworkManager` and `sddm` by symlinking their unit files into `/etc/systemd/system/` — the normal `systemctl enable` doesn't work inside a chroot since systemd isn't actually running there, so the script does by hand what `systemctl enable` would otherwise do for you.
 
 - `NetworkManager` — handles network connections after boot. Without this you have no internet on the installed system.
 - `sddm` — the login manager. Without this you boot to a TTY with no GUI.
 
-The script then unmounts all filesystems cleanly with `umount -R /mnt` before offering to reboot.
+Once the chroot phase is done, the script copies your preset (if one was used, or if `presets/default.conf` exists) into your new user's home directory as `arch-bootstrap-preset.conf`, so you have a record of what was installed. Passwords are never included in this file.
+
+Finally, it unmounts all filesystems cleanly with `umount -R /mnt` before offering to reboot.
+
+---
+
+## Presets
+
+Presets let you skip re-answering the same prompts on repeated installs (e.g. across several VMs, or after a failed attempt). A preset is a simple `key="value"` file — copy the example and fill in your own values:
+
+```bash
+cp presets/default.conf.example presets/default.conf
+# edit presets/default.conf with your values
+bash arch-install.sh --preset presets/default.conf
+```
+
+Only six keys are recognized: `DISK`, `HOSTNAME`, `USERNAME`, `TIMEZONE`, `LOCALE`, `REFLECTOR_COUNTRY`. Anything else in the file is ignored. **Passwords are never read from or written to a preset file** — you'll always be prompted for both, every time, regardless of preset. Any preset value that fails validation (say, a disk that doesn't exist on this machine) is discarded and you'll be prompted for it as usual, so it's safe to reuse the same preset file across different machines.
+
+`presets/default.conf` is gitignored, since it can contain machine-specific info like your disk path and hostname — only the `.example` file is tracked.
+
+---
+
+## Logging
+
+Everything the script prints is also written to `/tmp/arch-install.log` on the live ISO from the moment it starts. Once your target disk is mounted, the log is copied to `/mnt/var/log/arch-install.log` so it survives the install and is readable from your new system afterward — useful if something goes wrong partway through and you want to see exactly what ran. Because `/var/log` lives on its own `@var_log` subvolume, this log also survives any future btrfs rollback.
 
 ---
 
@@ -291,7 +327,7 @@ git clone https://aur.archlinux.org/yay.git
 cd yay && makepkg -si
 cd .. && rm -rf yay
 ```
-After that, `yay -S <package>` works just like `pacman -S`.
+After that, `yay -S <package>` works just like `pacman -S`. This is exactly what `setup.sh` in this repo does, if you'd rather run one command than copy-paste the above.
 
 **Snapshot tooling** — we created the `@snapshots` subvolume but didn't install a snapshot manager. [Timeshift](https://github.com/linuxmint/timeshift) or [Snapper](https://wiki.archlinux.org/title/snapper) are the common choices. Timeshift is easier to set up, Snapper integrates better with pacman hooks for automatic pre/post-update snapshots.
 
@@ -348,6 +384,7 @@ Run `pacman -Syu` regularly. Arch is a rolling release — there are no version 
 | Separate `@var_log` subvolume | Logs persist across rollbacks for debugging |
 | Double-confirm disk selection | One wrong keystroke on bare metal is unrecoverable |
 | Separate root and user passwords | Security — never assume these should be the same |
+| Whitelisted preset keys, no `source` | A preset file is untrusted input; parsing it key-by-key avoids executing arbitrary shell code |
 
 ---
 
@@ -365,8 +402,23 @@ Install `open-vm-tools` as described in the "What we leave for you" section abov
 **pacman fails with signature errors**
 Clock might be out of sync. Run `timedatectl set-ntp true` and wait a few seconds before retrying.
 
+**Something else went wrong partway through**
+Check `/tmp/arch-install.log` on the live ISO (or `/var/log/arch-install.log` on the installed system, if it got that far) for a full timestamped record of what ran before the failure.
+
+---
+
+## Development
+
+Tests live in `tests/` and use [bats](https://github.com/bats-core/bats-core). Run them locally with:
+
+```bash
+bats tests/
+```
+
+Three GitHub Actions workflows run on every push: [shellcheck](.github/workflows/shellcheck.yaml) for lint warnings, [bats](.github/workflows/bats.yaml) for the test suite, and [bandit](.github/workflows/bandit.yaml) for a security scan. A separate [CD workflow](.github/workflows/CD.yml) builds and publishes the Docker dev-server image on pushes to `main`.
+
 ---
 
 ## Contributing
 
-Found a bug or have a suggestion? Open an issue or PR. If you're adding support for a new feature, follow the existing pattern — prompt for anything variable, auto-detect anything deterministic, never assume.
+Found a bug or have a suggestion? Open an issue or PR. If you're adding support for a new feature, follow the existing pattern — prompt for anything variable, auto-detect anything deterministic, never assume. Add a bats test alongside any new `lib/` function if it has logic worth covering.
